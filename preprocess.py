@@ -1,6 +1,7 @@
 """
 This module processes a MIDI file for drummer groove data. It extracts tempo, time signature,
 note events, and specific control change events (hi-hat pedal) from the MIDI file, grouping these events into bars.
+
 Enhanced functionality:
     • Adds a "normalized_onset_position_in_bar_by_beat" field as well as the "normalized_onset_index" field
       to each note event. The normalized onset value is computed by rounding the onset position (in beats)
@@ -11,29 +12,40 @@ Enhanced functionality:
 
 import json
 import numpy as np
-from typing import Tuple, Any, Dict, List
-from mido import MidiFile, Message, bpm2tempo, tempo2bpm
+from typing import Tuple, Any, Dict, List, Optional
+from mido import MidiFile, Message, tempo2bpm
 
-# Create division grids
-sixteenth_divs = np.linspace(0, 4, 32, endpoint=False)
-eighth_triplet_divs = np.linspace(0, 4, 24, endpoint=False)
-total_divs = set(sixteenth_divs).union(set(eighth_triplet_divs))
-total_divs = sorted(list(total_divs))
-total_divs.append(4.0)
-
-
-def closest_value(target, values=tuple(total_divs)) -> Tuple[float, int]:
+def get_division_grid() -> List[float]:
     """
-    Returns a tuple (closest_value, index) where closest_value is the value in 'values'
-    that is closest to the given 'target' and index is its index in the tuple 'values'.
+    Constructs and returns the custom grid of rhythmic subdivisions.
+
+    The grid is constructed using sixteenth note divisions and eighth-note triplet divisions,
+    then merging these values and appending 4.0 to account for the bar-end.
+
+    Returns:
+        List[float]: Sorted list of grid subdivision values.
+    """
+    sixteenth_divs = np.linspace(0, 4, 32, endpoint=False)
+    eighth_triplet_divs = np.linspace(0, 4, 24, endpoint=False)
+    grid = sorted(set(sixteenth_divs).union(set(eighth_triplet_divs)))
+    grid.append(4.0)
+    return grid
+
+def closest_value(target: float, values: Optional[List[float]] = None) -> Tuple[float, int]:
+    """
+    Returns the value in 'values' that is closest to the 'target', and its index.
+
+    If no list is provided, it uses the custom division grid from get_division_grid().
 
     Parameters:
         target (float): The value to compare against.
-        values (tuple, optional): Tuple of candidate values (default: total_divs).
+        values (List[float], optional): Candidate values; defaults to the custom division grid.
 
     Returns:
         Tuple[float, int]: The closest value and its index.
     """
+    if values is None:
+        values = get_division_grid()
     best_index = None
     best_value = None
     best_diff = float('inf')
@@ -44,9 +56,7 @@ def closest_value(target, values=tuple(total_divs)) -> Tuple[float, int]:
             best_diff = diff
             best_value = val
             best_index = idx
-
     return best_value, best_index
-
 
 def get_track_object(midi_file: str) -> Tuple[MidiFile, List[Message]]:
     """
@@ -57,7 +67,7 @@ def get_track_object(midi_file: str) -> Tuple[MidiFile, List[Message]]:
 
     Returns:
         Tuple[MidiFile, List[Message]]:
-            - MidiFile: Object representation of the MIDI file (for access to ticks_per_beat).
+            - MidiFile: Object representation of the MIDI file.
             - List[Message]: The first track from the MIDI file.
     """
     midi = MidiFile(midi_file)
@@ -65,27 +75,25 @@ def get_track_object(midi_file: str) -> Tuple[MidiFile, List[Message]]:
         raise ValueError("The MIDI file does not contain any tracks.")
     return midi, midi.tracks[0]
 
-
 def get_track_info(messages: List[Message]) -> Tuple[int, float, int, int, int, int]:
     """
-    Extracts global tempo and time signature information from the track messages.
-    Default values are used if specific meta messages are not found.
+    Extracts tempo and time signature information from the MIDI messages.
 
     Parameters:
-        messages (List[Message]): A list of MIDI messages from which metadata is to be extracted.
+        messages (List[Message]): List of MIDI messages from which metadata is extracted.
 
     Returns:
         Tuple containing:
-            - tempo (int): The microseconds per beat (default: 50000).
+            - tempo (int): Microseconds per beat (default: 50000).
             - bpm (float): Beats per minute (default: 120).
             - numerator (int): Time signature numerator (default: 4).
             - denominator (int): Time signature denominator (default: 4).
-            - clocks_per_click (int): MIDI clocks per metronome click (default: 24).
-            - notated_32nd_notes_per_beat (int): Number of notated 32nd notes per beat (default: 8).
+            - clocks_per_click (int): MIDI clocks per click (default: 24).
+            - notated_32nd_notes_per_beat (int): Notated 32nd notes per beat (default: 8).
     """
-    # Default meta event values:
-    tempo = 50000  # microseconds per beat; default value in case no set_tempo is found
-    bpm = 120      # default BPM
+    # Default meta event values
+    tempo = 50000
+    bpm = 120
     numerator = 4
     denominator = 4
     clocks_per_click = 24
@@ -100,35 +108,21 @@ def get_track_info(messages: List[Message]) -> Tuple[int, float, int, int, int, 
         elif msg.type == 'set_tempo':
             tempo = msg.tempo
             bpm = tempo2bpm(tempo)
-
     return tempo, bpm, numerator, denominator, clocks_per_click, notated_32nd_notes_per_beat
-
 
 def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
     """
-    Processes MIDI track messages to extract note events and hi-hat pedal control events,
-    grouping them into bars and including note family information.
-
-    Also calculates the note's onset position in the bar in beat units (rounded to 2 decimals)
-    along with a normalized value based on custom rhythmic subdivisions.
-    IMPORTANT CHANGE: Instead of grouping notes by the absolute position (using the modulo of ticks_per_bar),
-    we check the normalized onset value. If that value equals 4.0 then the note is considered to start at 0.0
-    of the next bar.
+    Processes MIDI track messages to extract note events, grouping them into bars,
+    and computes normalized onset positions using a custom rhythmic grid.
 
     Parameters:
-        track (List[Message]): A list of MIDI messages (from a single track).
-        ticks_per_beat (int): Ticks per beat as defined in the MIDI file.
+        track (List[Message]): List of MIDI messages.
+        ticks_per_beat (int): Ticks per beat defined by the MIDI file.
 
     Returns:
-        Dict[str, Any]: A dictionary keyed by bar number (e.g., 'bar_1'), each containing:
-            - "notes": List of dictionaries for note_on events (nonzero velocity).
-              Each note event includes:
-                • "onset_position_in_bar_by_beat": Beat-level representation (rounded to 2 decimals).
-                • "normalized_onset_position_in_bar_by_beat": The normalized beat value from our custom grid.
-                • "normalized_onset_index": The index of the normalized value within the grid.
+        Dict[str, Any]: Dictionary mapping bar keys (e.g. 'bar_1') to their note events.
     """
-
-    # Mapping of MIDI note numbers to their respective families.
+    # Mapping of MIDI note numbers to families.
     note_family_mapping = {
         36: 1, 38: 2, 40: 2, 37: 2, 48: 3, 50: 3,
         45: 4, 47: 4, 43: 5, 58: 5, 46: 6, 26: 6,
@@ -136,46 +130,46 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
         52: 9, 51: 10, 59: 10, 53: 10
     }
 
-    # Retrieve global tempo and time signature values using the first few track messages.
+    # Retrieve global tempo and time signature values using the first few messages.
     tempo, bpm, numerator, denominator, clocks_per_click, notated_32nd_notes_per_beat = get_track_info(track[:5])
 
     # Compute ticks per bar.
     ticks_per_bar = ticks_per_beat * (4 * numerator // denominator)
 
-    # Dictionary to hold bar-wise event data.
-    bars: Dict[str, Dict[str, List[Any]]] = {}
+    # Retrieve the division grid once.
+    grid = get_division_grid()
 
-    abs_time = 0  # Running tally of absolute time in ticks.
+    # Dictionary to hold the organized bar-wise data.
+    bars: Dict[str, Dict[str, List[Any]]] = {}
+    abs_time = 0  # Running total of absolute ticks
 
     for msg in track:
-        abs_time += msg.time  # msg.time is delta ticks from previous event
+        abs_time += msg.time  # msg.time is delta ticks
 
-        # Process note_on events with nonzero velocity (zero velocity is considered note_off).
+        # Process note_on events with nonzero velocity.
         if msg.type == 'note_on' and msg.velocity != 0:
-            # The default bar based solely on abs_time:
             base_bar = abs_time // ticks_per_bar
             onset_in_bar = abs_time % ticks_per_bar
             onset_in_beats = onset_in_bar / ticks_per_beat
 
-            # Compute normalized onset using our grid.
-            normalized_onset, normalized_index = closest_value(onset_in_beats)
+            # Compute normalized onset using the grid.
+            normalized_onset, normalized_index = closest_value(onset_in_beats, values=grid)
 
-            # IMPORTANT: if the normalized value is 4.0, treat it as the beginning of the next bar.
+            # If the normalized onset equals the bar-end, treat as beginning of next bar.
             if normalized_onset == 4.0:
                 normalized_onset = 0.0
                 onset_in_beats = 0.0
-                # Update normalized_index to the index corresponding to 0.0 in the grid
-                normalized_index = total_divs.index(0.0)
+                # Re-calculate the normalized index for 0.0 using the grid.
+                normalized_index = grid.index(0.0)
                 base_bar += 1
 
-            # round values
+            # Round values as needed.
             onset_in_beats = round(onset_in_beats, 2)
             normalized_onset = round(normalized_onset, 3)
 
-            # Create the bar key as a 1-indexed number.
+            # Create bar key (1-indexed).
             bar_key = f"bar_{base_bar + 1}"
-
-            family_index = note_family_mapping.get(msg.note, None)  # Get family index or None if not found
+            family_index = note_family_mapping.get(msg.note, None)
 
             note_event = {
                 "midi_note_number": msg.note,
@@ -193,13 +187,10 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
 
     return bars
 
-
 def main() -> None:
     """
-    Main routine: processes an example MIDI file, extracts event data,
-    and prints the result.
+    Main routine that processes a MIDI file and writes the extracted track data to a JSON file.
     """
-    # Path to the MIDI file to be processed.
     midi_path = "groove/drummer1/session1/4_jazz-funk_116_beat_4-4.mid"
 
     try:
@@ -208,15 +199,12 @@ def main() -> None:
         print(f"Error loading MIDI file: {e}")
         return
 
-    # Process the first track using the ticks_per_beat information.
     processed_track = process_track(track_obj, midi_obj.ticks_per_beat)
-
-    print('success')
+    print('Processing success!')
 
     # Save to JSON for readability.
     with open('track_info.json', 'w') as json_file:
-        json.dump(processed_track, json_file, indent=4)  # indent=4 is optional for pretty printing.
-
+        json.dump(processed_track, json_file, indent=4)
 
 if __name__ == '__main__':
     main()
