@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 This module processes MIDI files for drummer groove data. Besides extracting tempo,
 time signature, note events, and specific control change events, it now supports a pipeline mode.
@@ -6,10 +5,10 @@ It recursively walks a dataset, analyzes each MIDI filename, processes it, and s
 each bar as a numpy array to a directory called "bar_arrays" whose subdirectory structure mirrors the original dataset.
 
 Filename pattern assumed:
-    idx_genre_bpm_type_tsnumerator-tsdenominator.mid
+idx_genre_bpm_type_tsnumerator-tsdenominator.mid
 
 Each numpy array is saved as:
-    {original_filename}_bar_{barnum}.npy
+{original_filename}_bar_{barnum}.npy
 """
 
 TOTAL_NUM_FAMILIES = 10
@@ -204,7 +203,7 @@ def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -
     If multiple notes fall into the same cell, the velocity values are accumulated.
 
     The numpy array file is saved as:
-         {base_filename}_bar_{barnum}.npy
+        {base_filename}_bar_{barnum}.npy
     in the provided output_dir.
 
     Parameters:
@@ -243,13 +242,33 @@ def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -
         output_path = os.path.join(output_dir, out_filename)
         np.save(output_path, bar_array)
 
+# Global dictionary to keep track of genre names.
+GENRE_MAPPING: Dict[str, int] = {}
+
+def map_genre_to_int(genre_field: str) -> int:
+    """
+    Extracts the main genre from the given genre_field (handles cases like 'genre-subgenre')
+    and maps it to a unique integer.
+
+    Parameters:
+        genre_field (str): The genre field extracted from the filename.
+
+    Returns:
+        int: The integer mapped to the main genre.
+    """
+    # Keep only the main genre (the part before any '-')
+    main_genre = genre_field.split('-')[0].strip().lower()
+    if main_genre not in GENRE_MAPPING:
+        GENRE_MAPPING[main_genre] = len(GENRE_MAPPING) + 1
+    return GENRE_MAPPING[main_genre]
+
 def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) -> None:
     """
     Processes a single MIDI file:
-      - Loads and processes the track.
-      - Parses and extracts the filename information.
-      - Saves each bar’s note events as a numpy array into the output folder, under a directory structure
-        mirroring the dataset.
+    - Loads and processes the track.
+    - Parses and extracts the filename information.
+    - Saves each bar’s note events as a numpy array into the output folder, under a directory structure
+      mirroring the dataset.
 
     Parameters:
         midi_file_path (str): Full path to the MIDI file.
@@ -259,21 +278,6 @@ def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) 
 
     # Parse the original filename and remove its extension.
     original_filename = os.path.splitext(os.path.basename(midi_file_path))[0]
-
-    # (Optional) Parse the filename based on the assumed pattern:
-    #   idx_genre_bpm_type_tsnumerator-tsdenominator.mid
-    # In case you need to analyze these fields:
-    try:
-        parts = original_filename.split("_")
-        idx = parts[0]
-        genre = parts[1]
-        bpm_field = parts[2]
-        type_field = parts[3]
-        time_sig = parts[4]  # expected to be like "4-4"
-        # You can do further processing if needed.
-    except Exception:
-        # If parsing fails, just move on.
-        pass
 
     try:
         midi_obj, track_obj = get_track_object(midi_file_path)
@@ -307,8 +311,8 @@ def process_dataset(dataset_root: str, output_root: str = "bar_arrays") -> None:
 def main() -> None:
     """
     Main entry point:
-      - Sets the dataset path.
-      - Initiates the recursive processing pipeline.
+    - Sets the dataset path.
+    - Initiates the recursive processing pipeline.
 
     Note: The JSON output is no longer generated.
     """
@@ -319,7 +323,20 @@ def main() -> None:
     output_root = "bar_arrays"
 
     process_dataset(dataset_root, output_root)
+    save_genre_mapping("bar_arrays")
     print("All MIDI files processed and bar arrays saved.")
+
+def save_genre_mapping(output_root: str) -> None:
+    """
+    Saves the global GENRE_MAPPING to a JSON file stored in the root of the output folder.
+
+    Parameters:
+        output_root (str): The root directory for your bar arrays and where the mapping file will be saved.
+    """
+    mapping_path = os.path.join(output_root, "genre_mapping.json")
+    with open(mapping_path, "w") as f:
+        json.dump(GENRE_MAPPING, f, indent=4)
+
 
 if __name__ == "__main__":
     main()
