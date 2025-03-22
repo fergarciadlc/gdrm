@@ -1,22 +1,21 @@
+#!/usr/bin/env python3
 """
-This module processes a MIDI file for drummer groove data. It extracts tempo,
-time signature, note events, and specific control change events (hi-hat pedal) from the MIDI file,
-grouping these events into bars.
+This module processes MIDI files for drummer groove data. Besides extracting tempo,
+time signature, note events, and specific control change events, it now supports a pipeline mode.
+It recursively walks a dataset, analyzes each MIDI filename, processes it, and saves
+each bar as a numpy array to a directory called "bar_arrays" whose subdirectory structure mirrors the original dataset.
 
-Enhanced functionality:
-    • Adds a "normalized_onset_position_in_bar_by_beat" field as well as the "normalized_onset_index" field
-      to each note event. The normalized onset value is computed by rounding the onset position (in beats)
-      to the nearest value defined in a custom grid and saving the index of that value.
-    • Groups notes into bars based on the normalized position: if the normalized value is 4.0 then the note is
-      actually assigned to the next bar and its normalized onset is forced to 0.0.
-    • Converts each bar’s note events into a numpy array with dimensions 10 (families) x 48 (grid locations).
-      The resulting arrays are saved to a folder called "bar_arrays" as .npy files.
+Filename pattern assumed:
+    idx_genre_bpm_type_tsnumerator-tsdenominator.mid
+
+Each numpy array is saved as:
+    {original_filename}_bar_{barnum}.npy
 """
 
 TOTAL_NUM_FAMILIES = 10
 TOTAL_TIME_LOCATIONS = 192
 
-import json
+import json  # no longer used but kept in case for debugging
 import os
 import numpy as np
 from typing import Tuple, Any, Dict, List, Optional
@@ -194,31 +193,35 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
 
     return bars
 
-def create_bar_arrays(bars: Dict[str, Any]) -> None:
+def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -> None:
     """
-    Converts each bar's note events into a numpy array and saves it to a .npy file.
+    Converts each bar's note events into a numpy array and saves it as a .npy file.
 
     The array has dimensions:
-        total_num_families x possible_time_locations
-        In this example, the dimensions are 10 x 48.
-    Each note event is placed using its family index (converted to 0-indexed row)
-    and its normalized onset index as its column. If multiple notes are found at the same
-    position, the velocity values are summed.
+        total_num_families x total_time_locations.
+
+    Each note event is placed using its 0-indexed family index (row) and its normalized onset index (column).
+    If multiple notes fall into the same cell, the velocity values are accumulated.
+
+    The numpy array file is saved as:
+         {base_filename}_bar_{barnum}.npy
+    in the provided output_dir.
 
     Parameters:
         bars (Dict[str, Any]): Dictionary mapping bar keys to their note events.
+        output_dir (str): Destination folder for bar arrays.
+        base_filename (str): The base filename (without extension) of the original MIDI file.
     """
     total_num_families = TOTAL_NUM_FAMILIES
     total_time_locations = TOTAL_TIME_LOCATIONS
 
-    # Create folder for numpy arrays if it doesn't exist
-    output_folder = "bar_arrays"
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+    # Ensure the output directory exists.
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir, exist_ok=True)
 
     for bar_key, bar_data in bars.items():
         # Initialize an empty array for the bar.
-        bar_array = np.full((total_num_families, total_time_locations), -1.0 , dtype=np.int32)
+        bar_array = np.full((total_num_families, total_time_locations), -1, dtype=np.int32)
 
         for note in bar_data["notes"]:
             family_index = note.get("family_index")
@@ -228,36 +231,95 @@ def create_bar_arrays(bars: Dict[str, Any]) -> None:
             if family_index is not None:
                 row = family_index - 1  # convert to 0-indexed
                 col = normalized_index        # provided index from grid calculation
-                # Accumulate velocity if multiple notes fall into the same cell.
+                # Accumulate velocity; start from -1, so add velocity and then adjust.
                 bar_array[row, col] += velocity
 
-        # Save the bar array as a .npy file.
-        output_path = os.path.join(output_folder, f"{bar_key}.npy")
+        # Derive a numeric bar number from the bar key:
+        # e.g., "bar_1" becomes "1"
+        bar_num = bar_key.split("_")[-1]
+
+        # Build output file name.
+        out_filename = f"{base_filename}_bar_{bar_num}.npy"
+        output_path = os.path.join(output_dir, out_filename)
         np.save(output_path, bar_array)
+
+def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) -> None:
+    """
+    Processes a single MIDI file:
+      - Loads and processes the track.
+      - Parses and extracts the filename information.
+      - Saves each bar’s note events as a numpy array into the output folder, under a directory structure
+        mirroring the dataset.
+
+    Parameters:
+        midi_file_path (str): Full path to the MIDI file.
+        dataset_root (str): Root folder of the dataset (used to create relative output paths).
+        output_root (str): Root output folder for bar arrays ("bar_arrays").
+    """
+
+    # Parse the original filename and remove its extension.
+    original_filename = os.path.splitext(os.path.basename(midi_file_path))[0]
+
+    # (Optional) Parse the filename based on the assumed pattern:
+    #   idx_genre_bpm_type_tsnumerator-tsdenominator.mid
+    # In case you need to analyze these fields:
+    try:
+        parts = original_filename.split("_")
+        idx = parts[0]
+        genre = parts[1]
+        bpm_field = parts[2]
+        type_field = parts[3]
+        time_sig = parts[4]  # expected to be like "4-4"
+        # You can do further processing if needed.
+    except Exception:
+        # If parsing fails, just move on.
+        pass
+
+    try:
+        midi_obj, track_obj = get_track_object(midi_file_path)
+    except Exception as e:
+        print(f"Error loading MIDI file {midi_file_path}: {e}")
+        return
+
+    bars = process_track(track_obj, midi_obj.ticks_per_beat)
+
+    # Determine the relative folder of the midi file within dataset_root.
+    rel_path = os.path.relpath(os.path.dirname(midi_file_path), dataset_root)
+    # Build the output directory to mirror the dataset structure.
+    output_dir = os.path.join(output_root, rel_path)
+    save_bar_arrays(bars, output_dir, original_filename)
+
+def process_dataset(dataset_root: str, output_root: str = "bar_arrays") -> None:
+    """
+    Walks through the dataset folder, processes each MIDI file found, and saves the corresponding bar numpy arrays.
+
+    Parameters:
+        dataset_root (str): The root directory of the MIDI dataset.
+        output_root (str): The output directory where bar arrays will be saved.
+    """
+    for root, dirs, files in os.walk(dataset_root):
+        for file in files:
+            if file.lower().endswith(".mid"):
+                midi_file_path = os.path.join(root, file)
+                print(f"Processing {midi_file_path} ...")
+                process_midi_file(midi_file_path, dataset_root, output_root)
 
 def main() -> None:
     """
-    Main routine that processes a MIDI file, writes the extracted track data to a JSON file,
-    and saves numpy array representations for each bar in the 'bar_arrays' folder.
+    Main entry point:
+      - Sets the dataset path.
+      - Initiates the recursive processing pipeline.
+
+    Note: The JSON output is no longer generated.
     """
-    midi_path = "groove/drummer1/session1/4_jazz-funk_116_beat_4-4.mid"
+    # Set the root folder for your dataset (adjust as needed)
+    dataset_root = "groove"  # adjust to the location where your dataset is stored
 
-    try:
-        midi_obj, track_obj = get_track_object(midi_path)
-    except Exception as e:
-        print(f"Error loading MIDI file: {e}")
-        return
+    # Set the output folder for bar arrays
+    output_root = "bar_arrays"
 
-    processed_track = process_track(track_obj, midi_obj.ticks_per_beat)
-    print("Processing success!")
-
-    # Save track info to a JSON file.
-    with open("track_info.json", "w") as json_file:
-        json.dump(processed_track, json_file, indent=4)
-
-    # Create numpy array representations for each bar.
-    create_bar_arrays(processed_track)
-    print("Bar arrays saved in folder 'bar_arrays'.")
+    process_dataset(dataset_root, output_root)
+    print("All MIDI files processed and bar arrays saved.")
 
 if __name__ == "__main__":
     main()
