@@ -1,6 +1,7 @@
 """
-This module processes a MIDI file for drummer groove data. It extracts tempo, time signature,
-note events, and specific control change events (hi-hat pedal) from the MIDI file, grouping these events into bars.
+This module processes a MIDI file for drummer groove data. It extracts tempo,
+time signature, note events, and specific control change events (hi-hat pedal) from the MIDI file,
+grouping these events into bars.
 
 Enhanced functionality:
     • Adds a "normalized_onset_position_in_bar_by_beat" field as well as the "normalized_onset_index" field
@@ -8,9 +9,15 @@ Enhanced functionality:
       to the nearest value defined in a custom grid and saving the index of that value.
     • Groups notes into bars based on the normalized position: if the normalized value is 4.0 then the note is
       actually assigned to the next bar and its normalized onset is forced to 0.0.
+    • Converts each bar’s note events into a numpy array with dimensions 10 (families) x 48 (grid locations).
+      The resulting arrays are saved to a folder called "bar_arrays" as .npy files.
 """
 
+TOTAL_NUM_FAMILIES = 10
+TOTAL_TIME_LOCATIONS = 48
+
 import json
+import os
 import numpy as np
 from typing import Tuple, Any, Dict, List, Optional
 from mido import MidiFile, Message, tempo2bpm
@@ -187,9 +194,51 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
 
     return bars
 
+def create_bar_arrays(bars: Dict[str, Any]) -> None:
+    """
+    Converts each bar's note events into a numpy array and saves it to a .npy file.
+
+    The array has dimensions:
+        total_num_families x possible_time_locations
+        In this example, the dimensions are 10 x 48.
+    Each note event is placed using its family index (converted to 0-indexed row)
+    and its normalized onset index as its column. If multiple notes are found at the same
+    position, the velocity values are summed.
+
+    Parameters:
+        bars (Dict[str, Any]): Dictionary mapping bar keys to their note events.
+    """
+    total_num_families = TOTAL_NUM_FAMILIES
+    total_time_locations = TOTAL_TIME_LOCATIONS
+
+    # Create folder for numpy arrays if it doesn't exist
+    output_folder = "bar_arrays"
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    for bar_key, bar_data in bars.items():
+        # Initialize an empty array for the bar.
+        bar_array = np.full((total_num_families, total_time_locations), -1.0 , dtype=np.int32)
+
+        for note in bar_data["notes"]:
+            family_index = note.get("family_index")
+            normalized_index = note.get("normalized_onset_index")
+            velocity = note.get("velocity")
+            # Proceed only if family_index is defined.
+            if family_index is not None:
+                row = family_index - 1  # convert to 0-indexed
+                col = normalized_index        # provided index from grid calculation
+                # Accumulate velocity if multiple notes fall into the same cell.
+                bar_array[row, col] += velocity
+
+        # Save the bar array as a .npy file.
+        output_path = os.path.join(output_folder, f"{bar_key}.npy")
+        np.save(output_path, bar_array)
+
 def main() -> None:
     """
-    Main routine that processes a MIDI file and writes the extracted track data to a JSON file.
+    Main routine that processes a MIDI file, writes the extracted track data to a JSON file,
+    and saves numpy array representations for each bar in the 'bar_arrays' folder.
     """
     midi_path = "groove/drummer1/session1/4_jazz-funk_116_beat_4-4.mid"
 
@@ -200,11 +249,15 @@ def main() -> None:
         return
 
     processed_track = process_track(track_obj, midi_obj.ticks_per_beat)
-    print('Processing success!')
+    print("Processing success!")
 
-    # Save to JSON for readability.
-    with open('track_info.json', 'w') as json_file:
+    # Save track info to a JSON file.
+    with open("track_info.json", "w") as json_file:
         json.dump(processed_track, json_file, indent=4)
 
-if __name__ == '__main__':
+    # Create numpy array representations for each bar.
+    create_bar_arrays(processed_track)
+    print("Bar arrays saved in folder 'bar_arrays'.")
+
+if __name__ == "__main__":
     main()
