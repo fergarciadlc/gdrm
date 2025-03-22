@@ -2,3 +2,6 @@ dataset/
 data/
 groove/
 .ipynb_checkpoints/
+bar_arrays/
+*.json
+*.ipynb
