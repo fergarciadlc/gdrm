@@ -2,8 +2,9 @@
 This module processes a MIDI file for drummer groove data. It extracts tempo, time signature,
 note events, and specific control change events (hi-hat pedal) from the MIDI file, grouping these events into bars.
 Enhanced functionality:
-    • Adds a "normalized_onset_position_in_bar_by_beat" field to each note event, computed by rounding the onset position
-      (in beats) to the nearest value defined in a custom grid.
+    • Adds a "normalized_onset_position_in_bar_by_beat" field as well as the "normalized_onset_index" field
+      to each note event. The normalized onset value is computed by rounding the onset position (in beats)
+      to the nearest value defined in a custom grid and saving the index of that value.
     • Groups notes into bars based on the normalized position: if the normalized value is 4.0 then the note is
       actually assigned to the next bar and its normalized onset is forced to 0.0.
 """
@@ -21,11 +22,30 @@ total_divs = sorted(list(total_divs))
 total_divs.append(4.0)
 
 
-def closest_value(target, values=tuple(total_divs)):
+def closest_value(target, values=tuple(total_divs)) -> Tuple[float, int]:
     """
-    Returns the closest value in 'values' to the given 'target'.
+    Returns a tuple (closest_value, index) where closest_value is the value in 'values'
+    that is closest to the given 'target' and index is its index in the tuple 'values'.
+
+    Parameters:
+        target (float): The value to compare against.
+        values (tuple, optional): Tuple of candidate values (default: total_divs).
+
+    Returns:
+        Tuple[float, int]: The closest value and its index.
     """
-    return min(values, key=lambda x: abs(x - target))
+    best_index = None
+    best_value = None
+    best_diff = float('inf')
+
+    for idx, val in enumerate(values):
+        diff = abs(val - target)
+        if diff < best_diff:
+            best_diff = diff
+            best_value = val
+            best_index = idx
+
+    return best_value, best_index
 
 
 def get_track_object(midi_file: str) -> Tuple[MidiFile, List[Message]]:
@@ -105,6 +125,7 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
               Each note event includes:
                 • "onset_position_in_bar_by_beat": Beat-level representation (rounded to 2 decimals).
                 • "normalized_onset_position_in_bar_by_beat": The normalized beat value from our custom grid.
+                • "normalized_onset_index": The index of the normalized value within the grid.
     """
 
     # Mapping of MIDI note numbers to their respective families.
@@ -137,12 +158,14 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
             onset_in_beats = onset_in_bar / ticks_per_beat
 
             # Compute normalized onset using our grid.
-            normalized_onset = closest_value(onset_in_beats)
+            normalized_onset, normalized_index = closest_value(onset_in_beats)
 
             # IMPORTANT: if the normalized value is 4.0, treat it as the beginning of the next bar.
             if normalized_onset == 4.0:
                 normalized_onset = 0.0
                 onset_in_beats = 0.0
+                # Update normalized_index to the index corresponding to 0.0 in the grid
+                normalized_index = total_divs.index(0.0)
                 base_bar += 1
 
             # round values
@@ -161,6 +184,7 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
                 "onset_position_in_bar": onset_in_bar,
                 "onset_position_in_bar_by_beat": onset_in_beats,
                 "normalized_onset_position_in_bar_by_beat": normalized_onset,
+                "normalized_onset_index": normalized_index,
                 "family_index": family_index
             }
             if bar_key not in bars:
