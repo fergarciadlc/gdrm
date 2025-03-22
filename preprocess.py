@@ -14,7 +14,7 @@ Enhanced functionality:
 """
 
 TOTAL_NUM_FAMILIES = 10
-TOTAL_TIME_LOCATIONS = 48
+TOTAL_TIME_LOCATIONS = 192
 
 import json
 import os
@@ -32,8 +32,8 @@ def get_division_grid() -> List[float]:
     Returns:
         List[float]: Sorted list of grid subdivision values.
     """
-    sixteenth_divs = np.linspace(0, 4, 32, endpoint=False)
-    eighth_triplet_divs = np.linspace(0, 4, 24, endpoint=False)
+    sixteenth_divs = np.linspace(0, 4, 128, endpoint=False)
+    eighth_triplet_divs = np.linspace(0, 4, 96, endpoint=False)
     grid = sorted(set(sixteenth_divs).union(set(eighth_triplet_divs)))
     grid.append(4.0)
     return grid
