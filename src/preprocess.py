@@ -308,24 +308,6 @@ def process_dataset(dataset_root: str, output_root: str = "bar_arrays") -> None:
                 print(f"Processing {midi_file_path} ...")
                 process_midi_file(midi_file_path, dataset_root, output_root)
 
-def main() -> None:
-    """
-    Main entry point:
-    - Sets the dataset path.
-    - Initiates the recursive processing pipeline.
-
-    Note: The JSON output is no longer generated.
-    """
-    # Set the root folder for your dataset (adjust as needed)
-    dataset_root = "groove"  # adjust to the location where your dataset is stored
-
-    # Set the output folder for bar arrays
-    output_root = "bar_arrays"
-
-    process_dataset(dataset_root, output_root)
-    save_genre_mapping("bar_arrays")
-    print("All MIDI files processed and bar arrays saved.")
-
 def save_genre_mapping(output_root: str) -> None:
     """
     Saves the global GENRE_MAPPING to a JSON file stored in the root of the output folder.
@@ -338,5 +320,17 @@ def save_genre_mapping(output_root: str) -> None:
         json.dump(GENRE_MAPPING, f, indent=4)
 
 
+def preprocess(dataset_root: str = "groove", output_root: str = "bar_arrays") -> None:
+    """
+    Main entry point:
+    - Sets the dataset path.
+    - Initiates the recursive processing pipeline.
+
+    Note: The JSON output is no longer generated.
+    """
+    process_dataset(dataset_root, output_root)
+    save_genre_mapping(output_root)
+    print("All MIDI files processed and bar arrays saved.")
+
 if __name__ == "__main__":
-    main()
+    preprocess()
