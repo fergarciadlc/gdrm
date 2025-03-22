@@ -11,14 +11,19 @@ Each numpy array is saved as:
 {original_filename}_bar_{barnum}.npy
 """
 
-TOTAL_NUM_FAMILIES = 10
-TOTAL_TIME_LOCATIONS = 192
 
 import json  # no longer used but kept in case for debugging
 import os
 import numpy as np
 from typing import Tuple, Any, Dict, List, Optional
 from mido import MidiFile, Message, tempo2bpm
+
+TOTAL_NUM_FAMILIES = 10
+TOTAL_TIME_LOCATIONS = 192
+
+# Global dictionary to keep track of genre names.
+GENRE_MAPPING: Dict[str, int] = {}
+
 
 def get_division_grid() -> List[float]:
     """
@@ -242,9 +247,6 @@ def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -
         output_path = os.path.join(output_dir, out_filename)
         np.save(output_path, bar_array)
 
-# Global dictionary to keep track of genre names.
-GENRE_MAPPING: Dict[str, int] = {}
-
 def map_genre_to_int(genre_field: str) -> int:
     """
     Extracts the main genre from the given genre_field (handles cases like 'genre-subgenre')
@@ -259,7 +261,7 @@ def map_genre_to_int(genre_field: str) -> int:
     # Keep only the main genre (the part before any '-')
     main_genre = genre_field.split('-')[0].strip().lower()
     if main_genre not in GENRE_MAPPING:
-        GENRE_MAPPING[main_genre] = len(GENRE_MAPPING) + 1
+        GENRE_MAPPING[main_genre] = len(GENRE_MAPPING)
     return GENRE_MAPPING[main_genre]
 
 def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) -> None:
@@ -278,6 +280,14 @@ def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) 
 
     # Parse the original filename and remove its extension.
     original_filename = os.path.splitext(os.path.basename(midi_file_path))[0]
+
+    parts = original_filename.split("_")
+    genre_str = parts[1]
+    # If the genre has a hyphen, keep only the part before the hyphen.
+    if '-' in genre_str:
+        genre_str = genre_str.split('-')[0]
+
+    map_genre_to_int(genre_str)
 
     try:
         midi_obj, track_obj = get_track_object(midi_file_path)

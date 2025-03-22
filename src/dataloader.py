@@ -2,6 +2,7 @@ import os
 import json
 import numpy as np
 import torch
+import torch.nn.functional as f
 from torch.utils.data import Dataset, DataLoader
 
 class GrooveDataset(Dataset):
@@ -59,7 +60,7 @@ class GrooveDataset(Dataset):
 
     def parse_metadata_from_filename(self, filename):
         # Remove extension and split on underscores.
-        # For instance:  "123_rock-jazz_120_drum_4-4_bar_1.npy"
+        # For instance: "123_rock-jazz_120_drum_4-4_bar_1.npy"
         filename = filename.replace(".npy", "")
         parts = filename.split("_")
         metadata = {}
@@ -70,7 +71,10 @@ class GrooveDataset(Dataset):
             # If the genre has a hyphen, keep only the part before the hyphen.
             if '-' in genre_str:
                 genre_str = genre_str.split('-')[0]
-            metadata["genre"] = self.genre_mapping.get(genre_str, genre_str)
+            # Fetch the genre index from the mapping (defaulting to 0 if not found).
+            genre_idx = self.genre_mapping.get(genre_str, 0)
+            # Ensure the genre index is converted to a tensor with the correct type for one_hot encoding.
+            metadata["genre"] = f.one_hot(torch.tensor(genre_idx, dtype=torch.long), num_classes=len(self.genre_mapping))
             metadata["bpm"] = parts[2]
             metadata["type"] = parts[3]
             time_sig = parts[4]

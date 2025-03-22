@@ -5,3 +5,4 @@ groove/
 bar_arrays/
 *.json
 *.ipynb
+__pycache__/

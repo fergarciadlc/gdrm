@@ -1,3 +1,3 @@
 # gdrm
 
-It is assumed you've downloaded the groove dataset from (link) and placed it in the root of this repository.
+It is assumed you've downloaded the groove [dataset](https://magenta.tensorflow.org/datasets/groove#download) and placed it in the root of this repository.
