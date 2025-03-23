@@ -29,7 +29,7 @@ if __name__ == "__main__":
         img_shape=(10, 192),
     )
     checkpoint_path = (
-        "checkpoints/generator_epoch_52.pth"  # Update with your checkpoint path
+        "checkpoints/generator_epoch_100.pth"  # Update with your checkpoint path
     )
     genre_idx = 3
     bpm = 80.0
