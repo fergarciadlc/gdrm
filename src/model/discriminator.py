@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class Discriminator(nn.Module):
     def __init__(self, input_dim=1960, num_genres=18):
         """
@@ -13,7 +14,7 @@ class Discriminator(nn.Module):
             nn.Linear(input_dim, 512),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True)
+            nn.LeakyReLU(0.2, inplace=True),
         )
         # Output for adversarial (real/fake) decision - raw score for Wasserstein distance.
         self.adv_layer = nn.Linear(256, 1)

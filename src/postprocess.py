@@ -7,11 +7,13 @@ The resulting MIDI messages are printed to the console before saving the MIDI fi
 """
 
 import os
+
 import numpy as np
 from mido import Message, MidiFile, MidiTrack
 
 TOTAL_NUM_FAMILIES = 10
 TOTAL_TIME_LOCATIONS = 192
+
 
 def get_division_grid() -> list:
     """
@@ -30,23 +32,16 @@ def get_division_grid() -> list:
     grid.append(4.0)
     return grid
 
+
 # We use one representative MIDI note for each family.
 # These values are selected from the original mapping in gdrm/preprocess.py.
 # For example, family 1 always uses note 36; family 2 uses note 38; etc.
-family_to_midi = {
-    1: 36,
-    2: 38,
-    3: 48,
-    4: 45,
-    5: 43,
-    6: 46,
-    7: 42,
-    8: 49,
-    9: 57,
-    10: 51
-}
+family_to_midi = {1: 36, 2: 38, 3: 48, 4: 45, 5: 43, 6: 46, 7: 42, 8: 49, 9: 57, 10: 51}
 
-def create_midi_from_array(npy_file: str, output_midi: str, ticks_per_beat: int = 480) -> None:
+
+def create_midi_from_array(
+    npy_file: str, output_midi: str, ticks_per_beat: int = 480
+) -> None:
     """
     Reads a numpy array from a file, then converts the note event data back into a MIDI file.
     Each nonempty cell (value > -1) in the array is assumed to represent a note event.
@@ -70,7 +65,9 @@ def create_midi_from_array(npy_file: str, output_midi: str, ticks_per_beat: int 
     # Retrieve the custom rhythmic grid.
     grid = get_division_grid()
     if len(grid) < TOTAL_TIME_LOCATIONS:
-        print("Warning: grid length is less than total time locations. Check grid generation!")
+        print(
+            "Warning: grid length is less than total time locations. Check grid generation!"
+        )
 
     events = []
     # Loop over each column (time grid) in order.
@@ -85,7 +82,9 @@ def create_midi_from_array(npy_file: str, output_midi: str, ticks_per_beat: int 
             if cell_value > -1:  # cell contains a note event
                 # Recover velocity (the original note velocity was added to -1)
                 velocity = int(cell_value + 1)
-                midi_note = family_to_midi.get(row+1)  # convert 0-indexed row to family number
+                midi_note = family_to_midi.get(
+                    row + 1
+                )  # convert 0-indexed row to family number
                 if midi_note is None:
                     continue
                 # Append the event as a tuple: (absolute_tick, midi_note, velocity)
@@ -123,12 +122,16 @@ def create_midi_from_array(npy_file: str, output_midi: str, ticks_per_beat: int 
     except Exception as e:
         print(f"Error saving MIDI file: {e}")
 
+
 def main():
     # Example: use the numpy file for bar 1 from the "bar_arrays" folder.
-    npy_file = os.path.join("bar_arrays/drummer1/session1", "1_funk_80_beat_4-4_bar_4.npy")
+    npy_file = os.path.join(
+        "bar_arrays/drummer1/session1", "1_funk_80_beat_4-4_bar_4.npy"
+    )
     npy_file = "generated_output.npy"
     output_midi = "generated_output.mid"
     create_midi_from_array(npy_file, output_midi)
+
 
 if __name__ == "__main__":
     main()

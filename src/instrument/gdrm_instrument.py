@@ -1,10 +1,11 @@
 import os
-import time
 import threading
-import numpy as np
-import mido
-from mido import Message, open_output
+import time
 from queue import Queue
+
+import mido
+import numpy as np
+from mido import Message, open_output
 
 TOTAL_NUM_FAMILIES = 10
 TOTAL_TIME_LOCATIONS = 192
@@ -20,8 +21,9 @@ family_to_midi = {
     7: 42,  # Hi-Hat closed
     8: 49,  # Crash
     9: 57,
-    10: 51  # Ride
+    10: 51,  # Ride
 }
+
 
 def get_division_grid() -> list:
     """
@@ -36,6 +38,7 @@ def get_division_grid() -> list:
     grid.append(4.0)
     return grid
 
+
 def ticks_to_seconds(ticks, bpm=120.0, tpb=480):
     """
     Convert 'ticks' to real seconds based on the BPM and ticks_per_beat (tpb).
@@ -44,16 +47,18 @@ def ticks_to_seconds(ticks, bpm=120.0, tpb=480):
     """
     return ticks * (60.0 / (bpm * tpb))
 
+
 ############################
 # Real-Time Bar Player
 ############################
+
 
 def play_bar_realtime(
     bar_array: np.ndarray,
     outport: mido.ports.BaseOutput,
     bpm: float = 120.0,
     tpb: int = 480,
-    note_length_ticks: int = 30
+    note_length_ticks: int = 30,
 ):
     """
     Plays a single bar (drum notes) in real time. Blocks until the bar is finished.
@@ -73,10 +78,14 @@ def play_bar_realtime(
                 if midi_note is None:
                     continue
                 # note_on event
-                events.append((onset_tick, Message('note_on', note=midi_note, velocity=velocity)))
+                events.append(
+                    (onset_tick, Message("note_on", note=midi_note, velocity=velocity))
+                )
                 # note_off event after some ticks
                 off_tick = onset_tick + note_length_ticks
-                events.append((off_tick, Message('note_off', note=midi_note, velocity=0)))
+                events.append(
+                    (off_tick, Message("note_off", note=midi_note, velocity=0))
+                )
 
     # Sort by absolute tick
     events.sort(key=lambda x: x[0])
@@ -96,11 +105,12 @@ def play_bar_realtime(
 
         outport.send(msg)
 
+
 def bar_player_loop(
     bar_queue: Queue,
     output_port: str = "IAC Driver Bus 1",
     bpm: float = 120.0,
-    tpb: int = 480
+    tpb: int = 480,
 ):
     """
     Continuously runs, taking bar_arrays from bar_queue and playing them.
@@ -118,22 +128,23 @@ def bar_player_loop(
                     break
 
                 # Play the bar in real time
-                play_bar_realtime(
-                    bar_array, outport=outport, bpm=bpm, tpb=tpb
-                )
+                play_bar_realtime(bar_array, outport=outport, bpm=bpm, tpb=tpb)
 
                 # When finished, we'll loop and grab the next bar
     except Exception as e:
         print(f"Error in bar_player_loop: {e}")
 
+
 ############################
 # Example: Generator
 ############################
 
-def generate_fake_bar(npy_file = "generated_output.npy") -> np.ndarray:
+
+def generate_fake_bar(npy_file="generated_output.npy") -> np.ndarray:
     with open(npy_file, "rb") as f:
         bar_array = np.load(f)
     return bar_array
+
 
 def generator_loop(bar_queue: Queue, bars_to_generate=8):
     """
@@ -155,9 +166,11 @@ def generator_loop(bar_queue: Queue, bars_to_generate=8):
     bar_queue.put(None)
     print("Generator is done, pushed None to stop the player.")
 
+
 ############################
 # Main Entry Point
 ############################
+
 
 def main():
     # A thread-safe queue for bars
@@ -167,7 +180,7 @@ def main():
     player_thread = threading.Thread(
         target=bar_player_loop,
         args=(bar_queue, "IAC Driver Bus 1", 120.0, 480),
-        daemon=True
+        daemon=True,
     )
     player_thread.start()
 
@@ -179,6 +192,7 @@ def main():
     # (player finishes when it sees None in the queue)
     player_thread.join()
     print("All done!")
+
 
 if __name__ == "__main__":
     main()

@@ -11,12 +11,12 @@ Each numpy array is saved as:
 {original_filename}_bar_{barnum}.npy
 """
 
-
 import json  # no longer used but kept in case for debugging
 import os
+from typing import Any, Dict, List, Optional, Tuple
+
 import numpy as np
-from typing import Tuple, Any, Dict, List, Optional
-from mido import MidiFile, Message, tempo2bpm
+from mido import Message, MidiFile, tempo2bpm
 
 TOTAL_NUM_FAMILIES = 10
 TOTAL_TIME_LOCATIONS = 192
@@ -41,7 +41,10 @@ def get_division_grid() -> List[float]:
     grid.append(4.0)
     return grid
 
-def closest_value(target: float, values: Optional[List[float]] = None) -> Tuple[float, int]:
+
+def closest_value(
+    target: float, values: Optional[List[float]] = None
+) -> Tuple[float, int]:
     """
     Returns the value in 'values' that is closest to the 'target', and its index.
 
@@ -58,7 +61,7 @@ def closest_value(target: float, values: Optional[List[float]] = None) -> Tuple[
         values = get_division_grid()
     best_index = None
     best_value = None
-    best_diff = float('inf')
+    best_diff = float("inf")
 
     for idx, val in enumerate(values):
         diff = abs(val - target)
@@ -67,6 +70,7 @@ def closest_value(target: float, values: Optional[List[float]] = None) -> Tuple[
             best_value = val
             best_index = idx
     return best_value, best_index
+
 
 def get_track_object(midi_file: str) -> Tuple[MidiFile, List[Message]]:
     """
@@ -84,6 +88,7 @@ def get_track_object(midi_file: str) -> Tuple[MidiFile, List[Message]]:
     if not midi.tracks:
         raise ValueError("The MIDI file does not contain any tracks.")
     return midi, midi.tracks[0]
+
 
 def get_track_info(messages: List[Message]) -> Tuple[int, float, int, int, int, int]:
     """
@@ -110,15 +115,23 @@ def get_track_info(messages: List[Message]) -> Tuple[int, float, int, int, int, 
     notated_32nd_notes_per_beat = 8
 
     for msg in messages:
-        if msg.type == 'time_signature':
+        if msg.type == "time_signature":
             numerator = msg.numerator
             denominator = msg.denominator
             clocks_per_click = msg.clocks_per_click
             notated_32nd_notes_per_beat = msg.notated_32nd_notes_per_beat
-        elif msg.type == 'set_tempo':
+        elif msg.type == "set_tempo":
             tempo = msg.tempo
             bpm = tempo2bpm(tempo)
-    return tempo, bpm, numerator, denominator, clocks_per_click, notated_32nd_notes_per_beat
+    return (
+        tempo,
+        bpm,
+        numerator,
+        denominator,
+        clocks_per_click,
+        notated_32nd_notes_per_beat,
+    )
+
 
 def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
     """
@@ -134,14 +147,39 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
     """
     # Mapping of MIDI note numbers to families.
     note_family_mapping = {
-        36: 1, 38: 2, 40: 2, 37: 2, 48: 3, 50: 3,
-        45: 4, 47: 4, 43: 5, 58: 5, 46: 6, 26: 6,
-        42: 7, 22: 7, 44: 7, 49: 8, 55: 8, 57: 9,
-        52: 9, 51: 10, 59: 10, 53: 10
+        36: 1,
+        38: 2,
+        40: 2,
+        37: 2,
+        48: 3,
+        50: 3,
+        45: 4,
+        47: 4,
+        43: 5,
+        58: 5,
+        46: 6,
+        26: 6,
+        42: 7,
+        22: 7,
+        44: 7,
+        49: 8,
+        55: 8,
+        57: 9,
+        52: 9,
+        51: 10,
+        59: 10,
+        53: 10,
     }
 
     # Retrieve global tempo and time signature values using the first few messages.
-    tempo, bpm, numerator, denominator, clocks_per_click, notated_32nd_notes_per_beat = get_track_info(track[:5])
+    (
+        tempo,
+        bpm,
+        numerator,
+        denominator,
+        clocks_per_click,
+        notated_32nd_notes_per_beat,
+    ) = get_track_info(track[:5])
 
     # Compute ticks per bar.
     ticks_per_bar = ticks_per_beat * (4 * numerator // denominator)
@@ -157,13 +195,15 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
         abs_time += msg.time  # msg.time is delta ticks
 
         # Process note_on events with nonzero velocity.
-        if msg.type == 'note_on' and msg.velocity != 0:
+        if msg.type == "note_on" and msg.velocity != 0:
             base_bar = abs_time // ticks_per_bar
             onset_in_bar = abs_time % ticks_per_bar
             onset_in_beats = onset_in_bar / ticks_per_beat
 
             # Compute normalized onset using the grid.
-            normalized_onset, normalized_index = closest_value(onset_in_beats, values=grid)
+            normalized_onset, normalized_index = closest_value(
+                onset_in_beats, values=grid
+            )
 
             # If the normalized onset equals the bar-end, treat as beginning of next bar.
             if normalized_onset == 4.0:
@@ -189,13 +229,14 @@ def process_track(track: List[Message], ticks_per_beat: int) -> Dict[str, Any]:
                 "onset_position_in_bar_by_beat": onset_in_beats,
                 "normalized_onset_position_in_bar_by_beat": normalized_onset,
                 "normalized_onset_index": normalized_index,
-                "family_index": family_index
+                "family_index": family_index,
             }
             if bar_key not in bars:
                 bars[bar_key] = {"notes": []}
             bars[bar_key]["notes"].append(note_event)
 
     return bars
+
 
 def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -> None:
     """
@@ -225,7 +266,9 @@ def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -
 
     for bar_key, bar_data in bars.items():
         # Initialize an empty array for the bar.
-        bar_array = np.full((total_num_families, total_time_locations), -1, dtype=np.int32)
+        bar_array = np.full(
+            (total_num_families, total_time_locations), -1, dtype=np.int32
+        )
 
         for note in bar_data["notes"]:
             family_index = note.get("family_index")
@@ -234,7 +277,7 @@ def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -
             # Proceed only if family_index is defined.
             if family_index is not None:
                 row = family_index - 1  # convert to 0-indexed
-                col = normalized_index        # provided index from grid calculation
+                col = normalized_index  # provided index from grid calculation
                 # Accumulate velocity; start from -1, so add velocity and then adjust.
                 bar_array[row, col] += velocity
 
@@ -246,6 +289,7 @@ def save_bar_arrays(bars: Dict[str, Any], output_dir: str, base_filename: str) -
         out_filename = f"{base_filename}_bar_{bar_num}.npy"
         output_path = os.path.join(output_dir, out_filename)
         np.save(output_path, bar_array)
+
 
 def map_genre_to_int(genre_field: str) -> int:
     """
@@ -259,10 +303,11 @@ def map_genre_to_int(genre_field: str) -> int:
         int: The integer mapped to the main genre.
     """
     # Keep only the main genre (the part before any '-')
-    main_genre = genre_field.split('-')[0].strip().lower()
+    main_genre = genre_field.split("-")[0].strip().lower()
     if main_genre not in GENRE_MAPPING:
         GENRE_MAPPING[main_genre] = len(GENRE_MAPPING)
     return GENRE_MAPPING[main_genre]
+
 
 def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) -> None:
     """
@@ -284,8 +329,8 @@ def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) 
     parts = original_filename.split("_")
     genre_str = parts[1]
     # If the genre has a hyphen, keep only the part before the hyphen.
-    if '-' in genre_str:
-        genre_str = genre_str.split('-')[0]
+    if "-" in genre_str:
+        genre_str = genre_str.split("-")[0]
 
     map_genre_to_int(genre_str)
 
@@ -303,6 +348,7 @@ def process_midi_file(midi_file_path: str, dataset_root: str, output_root: str) 
     output_dir = os.path.join(output_root, rel_path)
     save_bar_arrays(bars, output_dir, original_filename)
 
+
 def process_dataset(dataset_root: str, output_root: str = "bar_arrays") -> None:
     """
     Walks through the dataset folder, processes each MIDI file found, and saves the corresponding bar numpy arrays.
@@ -317,6 +363,7 @@ def process_dataset(dataset_root: str, output_root: str = "bar_arrays") -> None:
                 midi_file_path = os.path.join(root, file)
                 print(f"Processing {midi_file_path} ...")
                 process_midi_file(midi_file_path, dataset_root, output_root)
+
 
 def save_genre_mapping(output_root: str) -> None:
     """
@@ -341,6 +388,7 @@ def preprocess(dataset_root: str = "groove", output_root: str = "bar_arrays") ->
     process_dataset(dataset_root, output_root)
     save_genre_mapping(output_root)
     print("All MIDI files processed and bar arrays saved.")
+
 
 if __name__ == "__main__":
     preprocess()

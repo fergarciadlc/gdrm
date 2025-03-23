@@ -1,35 +1,44 @@
+import os
+
+import numpy as np
 import torch
 import torch.nn as nn
-import os
-import numpy as np
 
 from src.model.generator import Generator
 
+
 # Function to load generator checkpoint
-def load_generator(checkpoint_path, generator: Generator, device='cpu'):
+def load_generator(checkpoint_path, generator: Generator, device="cpu"):
     generator.load_state_dict(torch.load(checkpoint_path, map_location=device))
     generator.eval()
     return generator
 
 
 def realify_genered_pattern(fake_pattern: torch.Tensor):
-    return torch.where(fake_pattern <= 0, torch.tensor(-1.0, device=fake_pattern.device), fake_pattern)
+    return torch.where(
+        fake_pattern <= 0, torch.tensor(-1.0, device=fake_pattern.device), fake_pattern
+    )
+
 
 # Example inference
 if __name__ == "__main__":
-    device = "mps" # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = "mps"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
     generator = Generator(
         input_dim=24,
         output_dim=1920,
-        img_shape=(10,192),
+        img_shape=(10, 192),
     )
-    checkpoint_path = "checkpoints/generator_epoch_52.pth"  # Update with your checkpoint path
+    checkpoint_path = (
+        "checkpoints/generator_epoch_52.pth"  # Update with your checkpoint path
+    )
     genre_idx = 3
     bpm = 80.0
     normalised_bpm = 2 * ((bpm - 60) / (200 - 60)) - 1
 
     # Load the trained generator
-    generator = load_generator(checkpoint_path=checkpoint_path, generator=generator, device=device).to(device)
+    generator = load_generator(
+        checkpoint_path=checkpoint_path, generator=generator, device=device
+    ).to(device)
 
     # Define your input dimensions
     noise_dim = 5
@@ -52,4 +61,3 @@ if __name__ == "__main__":
     print("Generated output:", generated_output)
     # save the generated output as a .npy file
     np.save("generated_output.npy", generated_output)
-

@@ -7,8 +7,10 @@ Usage:
 """
 
 import os
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 
 def plot_bar_array(filepath: str) -> None:
     """
@@ -22,8 +24,8 @@ def plot_bar_array(filepath: str) -> None:
 
     # Create a plot of the bar array.
     plt.figure(figsize=(10, 4))
-    plt.imshow(bar_array, cmap='viridis', aspect='auto')
-    plt.colorbar(label='Velocity Sum')
+    plt.imshow(bar_array, cmap="viridis", aspect="auto")
+    plt.colorbar(label="Velocity Sum")
     plt.title(f"Bar Array: {os.path.basename(filepath)}")
     plt.xlabel("Normalized Onset Index")
     plt.ylabel("Drum Family (index)")
@@ -35,11 +37,14 @@ def plot_bar_array(filepath: str) -> None:
     plt.tight_layout()
     plt.show()
 
+
 if __name__ == "__main__":
     # Define the expected path to the bar array.
     filepath = os.path.join("bar_arrays", "bar_3.npy")
 
     if not os.path.exists(filepath):
-        print("Bar file not found. Make sure to run the preprocessing script first to generate bar arrays.")
+        print(
+            "Bar file not found. Make sure to run the preprocessing script first to generate bar arrays."
+        )
     else:
         plot_bar_array(filepath)

@@ -7,22 +7,22 @@ Conditions:
   - BPM: a continuous value (normalized) with shape (1,)
 """
 
+import logging
 import os
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import DataLoader
-from torch import autograd
-from tqdm import tqdm
 import subprocess
 import sys
 
-import logging
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch import autograd
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard.writer import SummaryWriter
+from tqdm import tqdm
 
+from dataloader import GrooveDataset
 from model.discriminator import Discriminator
 from model.generator import Generator
-from dataloader import GrooveDataset
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -31,8 +31,8 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 # ------------------------------------------------------------------------------
 BATCH_SIZE = 32
 NOISE_DIM = 5
-GENRE_DIM = 18     # one-hot genre vector dimension
-BPM_DIM = 1        # one additional value for BPM
+GENRE_DIM = 18  # one-hot genre vector dimension
+BPM_DIM = 1  # one additional value for BPM
 NUM_EPOCHS = 100
 LEARNING_RATE = 0.0002
 
@@ -49,12 +49,12 @@ LAMBDA_GP = 50
 # ------------------------------------------------------------------------------
 
 #   For Discriminator:
-LAMBDA_CLASS_D = 5.0   # Weight for the genre classification loss.
-LAMBDA_BPM_D   = 1.0   # Weight for the BPM regression loss.
+LAMBDA_CLASS_D = 5.0  # Weight for the genre classification loss.
+LAMBDA_BPM_D = 1.0  # Weight for the BPM regression loss.
 
 #   For Generator:
-LAMBDA_CLASS_G = 5.0   # Weight for the generator's genre classification loss.
-LAMBDA_BPM_G   = 3.0   # Weight for the generator's BPM regression loss.
+LAMBDA_CLASS_G = 5.0  # Weight for the generator's genre classification loss.
+LAMBDA_BPM_G = 3.0  # Weight for the generator's BPM regression loss.
 
 # Introduce number of critic updates per generator update.
 N_CRITIC = 3
@@ -66,9 +66,11 @@ bpm_loss_fn = nn.MSELoss()
 # ------------------------------------------------------------------------------
 # Logging Configuration
 # ------------------------------------------------------------------------------
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
+
 
 # ------------------------------------------------------------------------------
 # Helper Functions
@@ -90,7 +92,7 @@ def compute_gradient_penalty(discriminator, real_samples, fake_samples, device):
         grad_outputs=grad_outputs,
         create_graph=True,
         retain_graph=True,
-        only_inputs=True
+        only_inputs=True,
     )[0]
 
     gradients = gradients.view(batch_size, -1)
@@ -107,11 +109,15 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
     generator.to(device)
     discriminator.to(device)
 
-    optimizer_G = optim.Adam(generator.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
-    optimizer_D = optim.Adam(discriminator.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
+    optimizer_G = optim.Adam(
+        generator.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999)
+    )
+    optimizer_D = optim.Adam(
+        discriminator.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999)
+    )
 
     # Initialize TensorBoard SummaryWriter.
-    writer = SummaryWriter(log_dir='./runs/gdrm_experiment')
+    writer = SummaryWriter(log_dir="./runs/gdrm_experiment")
 
     # Ensure a directory exists for saving checkpoints.
     checkpoint_dir = "checkpoints"
@@ -119,9 +125,13 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
 
     for epoch in range(NUM_EPOCHS):
         for i, batch in enumerate(tqdm(dataloader)):
-            real_data = batch["data"].to(device)                     # shape: (batch, 10, 192)
-            genre_data = batch["metadata"]["genre"].to(device)         # shape: (batch, 18) one-hot encoding
-            bpm_data = batch["metadata"]["bpm"].unsqueeze(dim=1).to(device)  # shape: (batch, 1): normalized BPM
+            real_data = batch["data"].to(device)  # shape: (batch, 10, 192)
+            genre_data = batch["metadata"]["genre"].to(
+                device
+            )  # shape: (batch, 18) one-hot encoding
+            bpm_data = (
+                batch["metadata"]["bpm"].unsqueeze(dim=1).to(device)
+            )  # shape: (batch, 1): normalized BPM
 
             current_batch = real_data.size(0)
             # Convert one-hot genre into label indices for CrossEntropyLoss.
@@ -131,8 +141,8 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
             d_loss_total = 0.0
             d_adv_loss_sum = 0.0
             d_grad_penalty_sum = 0.0
-            d_class_loss_sum = 0.0   # Sum for both real and fake classification losses.
-            d_bpm_loss_sum = 0.0     # Sum for both real and fake BPM regression losses.
+            d_class_loss_sum = 0.0  # Sum for both real and fake classification losses.
+            d_bpm_loss_sum = 0.0  # Sum for both real and fake BPM regression losses.
 
             # ------------------------------------------------------------------
             # Multiple Discriminator (Critic) Updates
@@ -143,35 +153,48 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
                 # Flatten real data: (batch, 10,192) → (batch,1920)
                 real_data_flat = real_data.view(current_batch, -1)
                 # Forward pass on real samples.
-                real_validity, real_genre_pred, real_bpm_pred = discriminator(real_data_flat)
+                real_validity, real_genre_pred, real_bpm_pred = discriminator(
+                    real_data_flat
+                )
                 # Adversarial loss for real samples: aim for high values.
-                d_real_loss = - real_validity.mean()
+                d_real_loss = -real_validity.mean()
                 # Auxiliary losses for real samples.
-                real_class_loss = classification_loss_fn(real_genre_pred, real_genre_labels)
+                real_class_loss = classification_loss_fn(
+                    real_genre_pred, real_genre_labels
+                )
                 real_bpm_loss = bpm_loss_fn(real_bpm_pred, bpm_data)
 
                 # Generate fake samples with fresh noise for each critic update.
                 noise = torch.randn(current_batch, NOISE_DIM, device=device)
                 # Concatenate noise with the conditioning data.
-                fake_data = generator(noise, genre_data, bpm_data)   # shape: (batch,10,192)
+                fake_data = generator(
+                    noise, genre_data, bpm_data
+                )  # shape: (batch,10,192)
                 fake_data_flat = fake_data.view(current_batch, -1)
                 # Forward pass on fake samples.
-                fake_validity, fake_genre_pred, fake_bpm_pred = discriminator(fake_data_flat.detach())
+                fake_validity, fake_genre_pred, fake_bpm_pred = discriminator(
+                    fake_data_flat.detach()
+                )
                 # Adversarial loss for fake samples: aim for low values.
                 d_fake_loss = fake_validity.mean()
                 # Auxiliary losses for fake samples.
-                fake_class_loss = classification_loss_fn(fake_genre_pred, real_genre_labels)
+                fake_class_loss = classification_loss_fn(
+                    fake_genre_pred, real_genre_labels
+                )
                 fake_bpm_loss = bpm_loss_fn(fake_bpm_pred, bpm_data)
 
                 # Calculate gradient penalty.
-                gradient_penalty = compute_gradient_penalty(discriminator, real_data_flat.data, fake_data_flat.data, device)
+                gradient_penalty = compute_gradient_penalty(
+                    discriminator, real_data_flat.data, fake_data_flat.data, device
+                )
 
                 # Total adversarial loss for discriminator.
                 d_adv_loss = d_fake_loss + d_real_loss
 
                 # Compute weighted auxiliary losses.
-                aux_loss = (LAMBDA_CLASS_D * (real_class_loss + fake_class_loss) +
-                            LAMBDA_BPM_D   * (real_bpm_loss  + fake_bpm_loss))
+                aux_loss = LAMBDA_CLASS_D * (
+                    real_class_loss + fake_class_loss
+                ) + LAMBDA_BPM_D * (real_bpm_loss + fake_bpm_loss)
 
                 # Total discriminator loss.
                 d_loss = d_adv_loss + LAMBDA_GP * gradient_penalty + aux_loss
@@ -180,11 +203,11 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
                 optimizer_D.step()
 
                 # Accumulate losses over the N_CRITIC iterations.
-                d_loss_total      += d_loss.item()
-                d_adv_loss_sum    += d_adv_loss.item()
+                d_loss_total += d_loss.item()
+                d_adv_loss_sum += d_adv_loss.item()
                 d_grad_penalty_sum += gradient_penalty.item()
-                d_class_loss_sum  += (real_class_loss + fake_class_loss).item()
-                d_bpm_loss_sum    += (real_bpm_loss + fake_bpm_loss).item()
+                d_class_loss_sum += (real_class_loss + fake_class_loss).item()
+                d_bpm_loss_sum += (real_bpm_loss + fake_bpm_loss).item()
 
             # ------------------------------------------------------------------
             # Generator Update (use fresh noise and conditioning)
@@ -197,28 +220,34 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
             validity, genre_pred, bpm_pred = discriminator(gen_data_flat)
 
             # Generator adversarial loss: aim to maximize discriminator scores.
-            g_adv_loss = - validity.mean()
+            g_adv_loss = -validity.mean()
             # Auxiliary losses for the generator: push generated samples to match conditions.
             g_class_loss = classification_loss_fn(genre_pred, real_genre_labels)
             g_bpm_loss = bpm_loss_fn(bpm_pred, bpm_data)
 
             # Total generator loss including explicit weighting.
-            g_loss = g_adv_loss + (LAMBDA_CLASS_G * g_class_loss) + (LAMBDA_BPM_G * g_bpm_loss)
+            g_loss = (
+                g_adv_loss
+                + (LAMBDA_CLASS_G * g_class_loss)
+                + (LAMBDA_BPM_G * g_bpm_loss)
+            )
 
             g_loss.backward()
             optimizer_G.step()
 
             if i % 50 == 0:
                 iteration = epoch * len(dataloader) + i
-                avg_d_loss         = d_loss_total      / N_CRITIC
-                avg_d_adv_loss     = d_adv_loss_sum    / N_CRITIC
+                avg_d_loss = d_loss_total / N_CRITIC
+                avg_d_adv_loss = d_adv_loss_sum / N_CRITIC
                 avg_d_grad_penalty = d_grad_penalty_sum / N_CRITIC
-                avg_d_class_loss   = d_class_loss_sum  / N_CRITIC
-                avg_d_bpm_loss     = d_bpm_loss_sum    / N_CRITIC
+                avg_d_class_loss = d_class_loss_sum / N_CRITIC
+                avg_d_bpm_loss = d_bpm_loss_sum / N_CRITIC
 
                 # Update tqdm bar with the average losses
-                tqdm.write(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
-                           f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]")
+                tqdm.write(
+                    f"[Epoch {epoch + 1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
+                    f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]"
+                )
 
                 # Update tqdm postfix with losses
                 tqdm.write(
@@ -227,26 +256,39 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
                 )
 
                 # Log discriminator losses to TensorBoard.
-                writer.add_scalar('Loss/Discriminator/Total', avg_d_loss, iteration)
-                writer.add_scalar('Loss/Discriminator/Adversarial', avg_d_adv_loss, iteration)
-                writer.add_scalar('Loss/Discriminator/GradPenalty', avg_d_grad_penalty, iteration)
-                writer.add_scalar('Loss/Discriminator/Class', avg_d_class_loss, iteration)
-                writer.add_scalar('Loss/Discriminator/BPM', avg_d_bpm_loss, iteration)
+                writer.add_scalar("Loss/Discriminator/Total", avg_d_loss, iteration)
+                writer.add_scalar(
+                    "Loss/Discriminator/Adversarial", avg_d_adv_loss, iteration
+                )
+                writer.add_scalar(
+                    "Loss/Discriminator/GradPenalty", avg_d_grad_penalty, iteration
+                )
+                writer.add_scalar(
+                    "Loss/Discriminator/Class", avg_d_class_loss, iteration
+                )
+                writer.add_scalar("Loss/Discriminator/BPM", avg_d_bpm_loss, iteration)
 
                 # Log generator losses to TensorBoard.
-                writer.add_scalar('Loss/Generator/Total', g_loss.item(), iteration)
-                writer.add_scalar('Loss/Generator/Adversarial', g_adv_loss.item(), iteration)
-                writer.add_scalar('Loss/Generator/Class', g_class_loss.item(), iteration)
-                writer.add_scalar('Loss/Generator/BPM', g_bpm_loss.item(), iteration)
+                writer.add_scalar("Loss/Generator/Total", g_loss.item(), iteration)
+                writer.add_scalar(
+                    "Loss/Generator/Adversarial", g_adv_loss.item(), iteration
+                )
+                writer.add_scalar(
+                    "Loss/Generator/Class", g_class_loss.item(), iteration
+                )
+                writer.add_scalar("Loss/Generator/BPM", g_bpm_loss.item(), iteration)
 
         # Save model weights at the end of each epoch.
         generator_path = os.path.join(checkpoint_dir, f"generator_epoch_{epoch+1}.pth")
-        discriminator_path = os.path.join(checkpoint_dir, f"discriminator_epoch_{epoch+1}.pth")
+        discriminator_path = os.path.join(
+            checkpoint_dir, f"discriminator_epoch_{epoch+1}.pth"
+        )
         torch.save(generator.state_dict(), generator_path)
         torch.save(discriminator.state_dict(), discriminator_path)
         logger.info(f"Saved checkpoints for epoch {epoch+1} at '{checkpoint_dir}'")
 
     writer.close()
+
 
 # ------------------------------------------------------------------------------
 # Main Execution Block
@@ -254,7 +296,11 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
 if __name__ == "__main__":
     # Create generator and discriminator instances.
     # Note: The generator's input_dim is now noise_dim + genre_dim + bpm_dim.
-    generator = Generator(input_dim=NOISE_DIM + GENRE_DIM + BPM_DIM, output_dim=IMG_DIM, img_shape=(IMG_ROWS, IMG_COLS))
+    generator = Generator(
+        input_dim=NOISE_DIM + GENRE_DIM + BPM_DIM,
+        output_dim=IMG_DIM,
+        img_shape=(IMG_ROWS, IMG_COLS),
+    )
     discriminator = Discriminator(input_dim=IMG_DIM, num_genres=GENRE_DIM)
 
     dataset_directory = "bar_arrays"

@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 
+
 class Generator(nn.Module):
-    def __init__(self, input_dim=24, output_dim=1920, img_shape=(10,192)):
+    def __init__(self, input_dim=24, output_dim=1920, img_shape=(10, 192)):
         """
         input_dim: noise_dim + genre_dim + bpm_dim (e.g. 5 + 18 + 1 = 24)
         output_dim: flattened output size (e.g. 10*192 = 1920)
@@ -16,13 +17,12 @@ class Generator(nn.Module):
             nn.Linear(128, 256),
             nn.ReLU(inplace=True),
             nn.Linear(256, output_dim),
-            nn.Tanh()  # Ensures outputs between -1 and 1
+            nn.Tanh(),  # Ensures outputs between -1 and 1
         )
 
     def realify_genered_pattern(self, fake_pattern: torch.Tensor):
         neg_one = torch.tensor(-1.0, device=fake_pattern.device)
         return torch.where(fake_pattern <= 0, neg_one, fake_pattern)
-
 
     def forward(self, noise, genre, bpm):
         # noise: (batch, noise_dim)
