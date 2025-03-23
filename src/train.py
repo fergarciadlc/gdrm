@@ -7,6 +7,7 @@ Conditions:
   - BPM: a continuous value (normalized) with shape (1,)
 """
 
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -112,6 +113,10 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
     # Initialize TensorBoard SummaryWriter.
     writer = SummaryWriter(log_dir='./runs/gdrm_experiment')
 
+    # Ensure a directory exists for saving checkpoints.
+    checkpoint_dir = "checkpoints"
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
     for epoch in range(NUM_EPOCHS):
         for i, batch in enumerate(tqdm(dataloader)):
             real_data = batch["data"].to(device)                     # shape: (batch, 10, 192)
@@ -213,10 +218,9 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
                 avg_d_class_loss   = d_class_loss_sum  / N_CRITIC
                 avg_d_bpm_loss     = d_bpm_loss_sum    / N_CRITIC
 
-
                 # Update tqdm bar with the average losses
                 tqdm.write(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
-                            f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]")
+                           f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]")
 
                 # Update tqdm postfix with losses
                 tqdm.write(
@@ -236,6 +240,13 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
                 writer.add_scalar('Loss/Generator/Adversarial', g_adv_loss.item(), iteration)
                 writer.add_scalar('Loss/Generator/Class', g_class_loss.item(), iteration)
                 writer.add_scalar('Loss/Generator/BPM', g_bpm_loss.item(), iteration)
+
+        # Save model weights at the end of each epoch.
+        generator_path = os.path.join(checkpoint_dir, f"generator_epoch_{epoch+1}.pth")
+        discriminator_path = os.path.join(checkpoint_dir, f"discriminator_epoch_{epoch+1}.pth")
+        torch.save(generator.state_dict(), generator_path)
+        torch.save(discriminator.state_dict(), discriminator_path)
+        logger.info(f"Saved checkpoints for epoch {epoch+1} at '{checkpoint_dir}'")
 
     writer.close()
 
