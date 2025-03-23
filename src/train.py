@@ -16,6 +16,7 @@ from torch import autograd
 from tqdm import tqdm
 import subprocess
 import sys
+import argparse
 
 import logging
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -98,11 +99,10 @@ def compute_gradient_penalty(discriminator, real_samples, fake_samples, device):
     gradient_penalty = ((gradients_norm - 1) ** 2).mean()
     return gradient_penalty
 
-
 # ------------------------------------------------------------------------------
 # Training Loop
 # ------------------------------------------------------------------------------
-def train(generator: Generator, discriminator: Discriminator, dataloader):
+def train(generator: Generator, discriminator: Discriminator, dataloader, start_epoch=0):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     generator.to(device)
     discriminator.to(device)
@@ -117,7 +117,8 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
     checkpoint_dir = "checkpoints"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    for epoch in range(NUM_EPOCHS):
+    # Note: Using start_epoch to allow for resuming.
+    for epoch in range(start_epoch, NUM_EPOCHS):
         for i, batch in enumerate(tqdm(dataloader)):
             real_data = batch["data"].to(device)                     # shape: (batch, 10, 192)
             genre_data = batch["metadata"]["genre"].to(device)         # shape: (batch, 18) one-hot encoding
@@ -248,14 +249,36 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
 
     writer.close()
 
+
 # ------------------------------------------------------------------------------
 # Main Execution Block
 # ------------------------------------------------------------------------------
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Train a conditional WGAN-GP with auxiliary classifiers.")
+    parser.add_argument("--resume_epoch", type=int, default=0,
+                        help="Epoch to resume training from (if > 0, loads corresponding checkpoints).")
+    args = parser.parse_args()
+
     # Create generator and discriminator instances.
     # Note: The generator's input_dim is now noise_dim + genre_dim + bpm_dim.
     generator = Generator(input_dim=NOISE_DIM + GENRE_DIM + BPM_DIM, output_dim=IMG_DIM, img_shape=(IMG_ROWS, IMG_COLS))
     discriminator = Discriminator(input_dim=IMG_DIM, num_genres=GENRE_DIM)
+
+    # If resume_epoch > 0, then load the checkpoint
+    resume_epoch = 0
+    if args.resume_epoch > 0:
+        checkpoint_dir = "checkpoints"
+        generator_ckpt = os.path.join(checkpoint_dir, f"generator_epoch_{args.resume_epoch}.pth")
+        discriminator_ckpt = os.path.join(checkpoint_dir, f"discriminator_epoch_{args.resume_epoch}.pth")
+        if os.path.exists(generator_ckpt) and os.path.exists(discriminator_ckpt):
+            generator.load_state_dict(torch.load(generator_ckpt))
+            discriminator.load_state_dict(torch.load(discriminator_ckpt))
+            resume_epoch = args.resume_epoch
+            logger.info(f"Resumed training from epoch {args.resume_epoch} using checkpoints:")
+            logger.info(f"   Generator: {generator_ckpt}")
+            logger.info(f"   Discriminator: {discriminator_ckpt}")
+        else:
+            logger.error("Checkpoint files not found for the provided resume_epoch. Starting from scratch.")
 
     dataset_directory = "bar_arrays"
     logger.info("Loading dataset")
@@ -264,4 +287,5 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
     logger.info("Begin training")
-    train(generator, discriminator, dataloader)
+    # Pass args.resume_epoch as the starting epoch.
+    train(generator, discriminator, dataloader, start_epoch=resume_epoch)
