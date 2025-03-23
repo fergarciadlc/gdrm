@@ -7,3 +7,5 @@ bar_arrays/
 *.ipynb
 __pycache__/
 runs/
+checkpoints/
+old_checkpoints/

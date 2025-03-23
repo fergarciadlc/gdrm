@@ -24,6 +24,8 @@ from model.discriminator import Discriminator
 from model.generator import Generator
 from dataloader import GrooveDataset
 
+torch.multiprocessing.set_sharing_strategy("file_system")
+
 # ------------------------------------------------------------------------------
 # Hyperparameters
 # ------------------------------------------------------------------------------
@@ -40,22 +42,22 @@ IMG_COLS = 192
 IMG_DIM = IMG_ROWS * IMG_COLS
 
 # Gradient penalty coefficient.
-LAMBDA_GP = 10
+LAMBDA_GP = 50
 
 # ------------------------------------------------------------------------------
 # Auxiliary Loss Weighting Hyperparameters:
 # ------------------------------------------------------------------------------
 
 #   For Discriminator:
-LAMBDA_CLASS_D = 1.0   # Weight for the genre classification loss.
+LAMBDA_CLASS_D = 5.0   # Weight for the genre classification loss.
 LAMBDA_BPM_D   = 1.0   # Weight for the BPM regression loss.
 
 #   For Generator:
-LAMBDA_CLASS_G = 1.0   # Weight for the generator's genre classification loss.
-LAMBDA_BPM_G   = 1.0   # Weight for the generator's BPM regression loss.
+LAMBDA_CLASS_G = 5.0   # Weight for the generator's genre classification loss.
+LAMBDA_BPM_G   = 3.0   # Weight for the generator's BPM regression loss.
 
 # Introduce number of critic updates per generator update.
-N_CRITIC = 5
+N_CRITIC = 3
 
 # Loss functions for auxiliary tasks:
 classification_loss_fn = nn.CrossEntropyLoss()
@@ -263,7 +265,7 @@ if __name__ == "__main__":
     logger.info("Loading dataset")
     # Ensure that GrooveDataset returns a dictionary with "data" and "metadata" that also includes "bpm".
     dataset = GrooveDataset(root_dir=dataset_directory)
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
+    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
     logger.info("Starting up tensorboard")
     try:
