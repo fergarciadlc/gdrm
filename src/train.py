@@ -33,7 +33,7 @@ BATCH_SIZE = 32
 NOISE_DIM = 5
 GENRE_DIM = 18     # one-hot genre vector dimension
 BPM_DIM = 1        # one additional value for BPM
-NUM_EPOCHS = 100
+NUM_EPOCHS = 1000
 LEARNING_RATE = 0.0002
 
 # Generated drum pattern dimensions: 10x192 = 1920 numbers.
