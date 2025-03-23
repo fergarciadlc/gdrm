@@ -9,3 +9,4 @@ __pycache__/
 runs/
 checkpoints/
 old_checkpoints/
+.DS_Store
