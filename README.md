@@ -6,7 +6,7 @@ gdrum, short for GAN drum, is a bar-level drum sequencer. Given a parameters lik
 
 ## DEMO video
 
-[![Watch the video](https://img.youtube.com/vi/SnJgByFKxcg/maxresdefault.jpg)](https://youtu.be/T-D1KVIuvjA)
+[![Video](https://img.youtube.com/vi/SnJgByFKxcg/sddefault.jpg)](https://youtu.be/SnJgByFKxcg)
 
 ## Installing:
 To install the system, clone the repository, and create your python environment in python=3.10. Once in your environment, install project dependencies with `pip install -r requirements.txt`.
