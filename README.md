@@ -8,7 +8,7 @@ To install the system, clone the repository, and create your python environment 
 ## Dataset:
 downloaded the [groove dataset](https://magenta.tensorflow.org/datasets/groove#download) and place it in the root of this repository.
 
-This dataset contains many drumming performances in MIDI, with accompanying tempo and genre.
+This dataset contains many drumming performances in MIDI, with accompanying tempo and genre labels.
 
 ## Training:
 #### **Preprocessing:**
@@ -42,4 +42,13 @@ tensorboard --logdir=./runs/gdrm_experiment
 
 
 ## The GAN:
-The discriminator is trained as a critic, using the wasserstein distance to evaluate error metrics.
+The discriminator is trained as a critic, using the wasserstein distance to evaluate it's understanding of the distance between real and fake drum patterns.
+
+The GAN is conditioned on Genre labels via one-hot encoding, and bpm. These parameters are appended to the noise vector the generator recieves, and it's the discriminator's job to correctly guess these labels from the incoming drum patterns. A correct guess results in a positive score for both networks.
+
+To this end, the generator and the discriminator compete when it comes to data provenance, but cooperate for the labels.
+
+We are not necessarily convinced by our choice of hyper-parameters. We do think that there are more optimal settings for the weights of the losses. However, due to lack of time, we were unable to fully test our network.
+
+## Acknowledgements:
+This project was initially created in the context of the Creative Music Computation course, offered as part of the Master's programme in Sound and Music Computing at the Universitat Pompeu Fabra. This project was created by Andreas Papaeracleous and Fernando Garcia de la Cruz.
