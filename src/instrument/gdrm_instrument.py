@@ -1,13 +1,15 @@
 import os
 import time
+import threading
 import numpy as np
 import mido
 from mido import Message, open_output
+from queue import Queue
 
 TOTAL_NUM_FAMILIES = 10
 TOTAL_TIME_LOCATIONS = 192
 
-# Example mapping of "drum families" to representative MIDI note numbers:
+# Example drum mapping
 family_to_midi = {
     1: 36,  # Kick
     2: 38,  # Snare
@@ -42,101 +44,141 @@ def ticks_to_seconds(ticks, bpm=120.0, tpb=480):
     """
     return ticks * (60.0 / (bpm * tpb))
 
-def create_realtime_midi_from_array(
-    npy_file: str,
-    output_port: str = "IAC Driver Bus 1",
+############################
+# Real-Time Bar Player
+############################
+
+def play_bar_realtime(
+    bar_array: np.ndarray,
+    outport: mido.ports.BaseOutput,
     bpm: float = 120.0,
-    ticks_per_beat: int = 480,
+    tpb: int = 480,
     note_length_ticks: int = 30
 ):
     """
-    1) Loads the numpy array (shape: [10, 48]).
-    2) Builds a list of events, each with an 'absolute tick' and a Mido message.
-       - We make both note_on and note_off events. note_off = note_on_tick + note_length_ticks
-    3) Sorts all events by their time in ticks, so simultaneous events get played together.
-    4) Uses monotonic time to schedule each event in real time, so they play at the correct moments.
-    5) Sends all MIDI messages to the specified output_port in real time.
+    Plays a single bar (drum notes) in real time. Blocks until the bar is finished.
+    bar_array: shape [10, 48]
     """
 
-    # --- Load the bar array (drum families x time-grid) ---
-    try:
-        bar_array = np.load(npy_file)  # e.g., shape [10, 48]
-    except Exception as e:
-        print(f"Error loading npy file: {e}")
-        return
-
+    # Build note_on / note_off events
     grid = get_division_grid()
-    if len(grid) < TOTAL_TIME_LOCATIONS:
-        print("Warning: grid length is less than total time locations. Check grid generation!")
-
-    # --- Build note_on + note_off events ---
-    # We'll store them as a list of tuples: (abs_tick, mido.Message)
     events = []
-
-    # 1) Create note_on events
     for col in range(TOTAL_TIME_LOCATIONS):
-        onset_tick = int(round(grid[col] * ticks_per_beat))
+        onset_tick = int(round(grid[col] * tpb))
         for row in range(TOTAL_NUM_FAMILIES):
             cell_value = bar_array[row, col]
-            if cell_value > -1:  # indicates a note event
-                velocity = int(cell_value + 1)  # original velocity
+            if cell_value > -1:
+                velocity = int(cell_value + 1)
                 midi_note = family_to_midi.get(row + 1)
                 if midi_note is None:
                     continue
-
-                # Note-On event
-                msg_on = Message('note_on', note=midi_note, velocity=velocity, time=0)
-                events.append((onset_tick, msg_on))
-
-                # 2) Create note_off event a short time later
+                # note_on event
+                events.append((onset_tick, Message('note_on', note=midi_note, velocity=velocity)))
+                # note_off event after some ticks
                 off_tick = onset_tick + note_length_ticks
-                msg_off = Message('note_off', note=midi_note, velocity=0, time=0)
-                events.append((off_tick, msg_off))
+                events.append((off_tick, Message('note_off', note=midi_note, velocity=0)))
 
-    # --- Sort events by absolute tick ---
+    # Sort by absolute tick
     events.sort(key=lambda x: x[0])
 
-    # --- Open MIDI port ---
-    print(f"Opening MIDI output port: {output_port}")
-    try:
-        outport = open_output(output_port)
-    except Exception as e:
-        print(f"Could not open MIDI port '{output_port}': {e}")
-        return
-
-    print(f"Starting real-time playback at {bpm} BPM...")
-    start_time = time.monotonic()  # reference moment
-
-    # --- Schedule events in real time ---
+    # Real-time scheduling
+    start_time = time.monotonic()
     for abs_tick, msg in events:
-        # Convert ticks to seconds offset from the start of the bar
-        event_time_offset = ticks_to_seconds(abs_tick, bpm=bpm, tpb=ticks_per_beat)
+        event_time_offset = ticks_to_seconds(abs_tick, bpm, tpb)
         scheduled_time = start_time + event_time_offset
 
-        # Busy-wait or small-sleep until we reach the event's scheduled time
+        # Wait until we reach scheduled_time
         while True:
             now = time.monotonic()
             if now >= scheduled_time:
                 break
-            # Sleep a bit to lighten CPU load; pick a small number for smooth timing
-            time.sleep(0.0005)
+            time.sleep(0.0005)  # short sleep to reduce busy-wait
 
-        # Send the message
         outport.send(msg)
 
-    outport.close()
-    print("Playback completed.")
+def bar_player_loop(
+    bar_queue: Queue,
+    output_port: str = "IAC Driver Bus 1",
+    bpm: float = 120.0,
+    tpb: int = 480
+):
+    """
+    Continuously runs, taking bar_arrays from bar_queue and playing them.
+    Blocks if no bars are in the queue.
+    """
+    print(f"Bar player started, opening MIDI port: {output_port}")
+    try:
+        with open_output(output_port) as outport:
+            while True:
+                # Get the next bar (BLOCK until available)
+                bar_array = bar_queue.get()  # blocks if empty
+                if bar_array is None:
+                    # If we get None, it signals "stop"
+                    print("Received None in bar_queue, stopping playback.")
+                    break
+
+                # Play the bar in real time
+                play_bar_realtime(
+                    bar_array, outport=outport, bpm=bpm, tpb=tpb
+                )
+
+                # When finished, we'll loop and grab the next bar
+    except Exception as e:
+        print(f"Error in bar_player_loop: {e}")
+
+############################
+# Example: Generator
+############################
+
+def generate_fake_bar(npy_file = "generated_output.npy") -> np.ndarray:
+    with open(npy_file, "rb") as f:
+        bar_array = np.load(f)
+    return bar_array
+
+def generator_loop(bar_queue: Queue, bars_to_generate=8):
+    """
+    Continuously generate bars (perhaps triggered by your model),
+    then push them into the bar_queue for playback.
+    bars_to_generate: how many bars we want to push in this example
+    """
+    print("Starting generator loop...")
+    for i in range(bars_to_generate):
+        # Could be your actual GAN inference
+        bar_array = generate_fake_bar()
+        # Put in the queue
+        bar_queue.put(bar_array)
+        print(f"Generated bar #{i+1}, queued for playback.")
+        # Wait some time before next generation, or generate immediately
+        time.sleep(1.0)
+
+    # Once done, we can optionally push a None to signal no more bars
+    bar_queue.put(None)
+    print("Generator is done, pushed None to stop the player.")
+
+############################
+# Main Entry Point
+############################
 
 def main():
-    # Example usage
-    npy_file = os.path.join("bar_arrays", "1_funk_80_beat_4-4_bar_4.npy")
-    create_realtime_midi_from_array(
-        npy_file=npy_file,
-        output_port="IAC Driver Bus 1",
-        bpm=80.0,
-        ticks_per_beat=480,
-        note_length_ticks=30
+    # A thread-safe queue for bars
+    bar_queue = Queue()
+
+    # Start the bar_player_loop in a thread
+    player_thread = threading.Thread(
+        target=bar_player_loop,
+        args=(bar_queue, "IAC Driver Bus 1", 120.0, 480),
+        daemon=True
     )
+    player_thread.start()
+
+    # Start the generator loop in the main thread (or another thread)
+    # This simulates or calls your actual GAN inference code
+    generator_loop(bar_queue, bars_to_generate=4)
+
+    # Wait for the player to finish
+    # (player finishes when it sees None in the queue)
+    player_thread.join()
+    print("All done!")
 
 if __name__ == "__main__":
     main()
