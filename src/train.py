@@ -13,6 +13,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch import autograd
 from tqdm import tqdm
+import subprocess
+import sys
 
 import logging
 from torch.utils.tensorboard.writer import SummaryWriter
@@ -120,10 +122,16 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
             # Convert one-hot genre into label indices for CrossEntropyLoss.
             real_genre_labels = genre_data.argmax(dim=1)
 
+            # Initialize accumulators for additional loss components for the discriminator.
+            d_loss_total = 0.0
+            d_adv_loss_sum = 0.0
+            d_grad_penalty_sum = 0.0
+            d_class_loss_sum = 0.0   # Sum for both real and fake classification losses.
+            d_bpm_loss_sum = 0.0     # Sum for both real and fake BPM regression losses.
+
             # ------------------------------------------------------------------
             # Multiple Discriminator (Critic) Updates
             # ------------------------------------------------------------------
-            d_loss_total = 0.0
             for _ in range(N_CRITIC):
                 optimizer_D.zero_grad()
 
@@ -167,7 +175,12 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
                 d_loss.backward()
                 optimizer_D.step()
 
-                d_loss_total += d_loss.item()
+                # Accumulate losses over the N_CRITIC iterations.
+                d_loss_total      += d_loss.item()
+                d_adv_loss_sum    += d_adv_loss.item()
+                d_grad_penalty_sum += gradient_penalty.item()
+                d_class_loss_sum  += (real_class_loss + fake_class_loss).item()
+                d_bpm_loss_sum    += (real_bpm_loss + fake_bpm_loss).item()
 
             # ------------------------------------------------------------------
             # Generator Update (use fresh noise and conditioning)
@@ -193,14 +206,36 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
             optimizer_G.step()
 
             if i % 50 == 0:
-                avg_d_loss = d_loss_total / N_CRITIC
                 iteration = epoch * len(dataloader) + i
-                logger.info(f"[Epoch {epoch+1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
+                avg_d_loss         = d_loss_total      / N_CRITIC
+                avg_d_adv_loss     = d_adv_loss_sum    / N_CRITIC
+                avg_d_grad_penalty = d_grad_penalty_sum / N_CRITIC
+                avg_d_class_loss   = d_class_loss_sum  / N_CRITIC
+                avg_d_bpm_loss     = d_bpm_loss_sum    / N_CRITIC
+
+
+                # Update tqdm bar with the average losses
+                tqdm.write(f"[Epoch {epoch + 1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
                             f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]")
 
-                # Log metrics to TensorBoard.
-                writer.add_scalar('Loss/Discriminator', avg_d_loss, iteration)
-                writer.add_scalar('Loss/Generator', g_loss.item(), iteration)
+                # Update tqdm postfix with losses
+                tqdm.write(
+                    f"[D Adv Loss: {avg_d_adv_loss:.4f}, D Grad Penalty: {avg_d_grad_penalty:.4f}, "
+                    f"D Class Loss: {avg_d_class_loss:.4f}, D BPM Loss: {avg_d_bpm_loss:.4f}]"
+                )
+
+                # Log discriminator losses to TensorBoard.
+                writer.add_scalar('Loss/Discriminator/Total', avg_d_loss, iteration)
+                writer.add_scalar('Loss/Discriminator/Adversarial', avg_d_adv_loss, iteration)
+                writer.add_scalar('Loss/Discriminator/GradPenalty', avg_d_grad_penalty, iteration)
+                writer.add_scalar('Loss/Discriminator/Class', avg_d_class_loss, iteration)
+                writer.add_scalar('Loss/Discriminator/BPM', avg_d_bpm_loss, iteration)
+
+                # Log generator losses to TensorBoard.
+                writer.add_scalar('Loss/Generator/Total', g_loss.item(), iteration)
+                writer.add_scalar('Loss/Generator/Adversarial', g_adv_loss.item(), iteration)
+                writer.add_scalar('Loss/Generator/Class', g_class_loss.item(), iteration)
+                writer.add_scalar('Loss/Generator/BPM', g_bpm_loss.item(), iteration)
 
     writer.close()
 
@@ -219,5 +254,19 @@ if __name__ == "__main__":
     dataset = GrooveDataset(root_dir=dataset_directory)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
+    logger.info("Starting up tensorboard")
+    try:
+        subprocess.Popen(["tensorboard", "--logdir=./runs/gdrm_experiment"])
+        if sys.platform == "win32":
+            subprocess.Popen(["start", "http://localhost:6006/"], shell=True)
+        elif sys.platform == "linux":
+            subprocess.Popen(["xdg-open", "http://localhost:6006/"])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", "http://localhost:6006/"])
+        else:
+            logger.info("Unsupported operating system")
+
+    except Exception as e:
+        print(f"{e}: \nCouldn't start tensorboard ")
     logger.info("Begin training")
     train(generator, discriminator, dataloader)
