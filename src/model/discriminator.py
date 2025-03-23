@@ -15,22 +15,18 @@ class Discriminator(nn.Module):
             nn.Linear(512, 256),
             nn.LeakyReLU(0.2, inplace=True)
         )
-        # Output for adversarial (real/fake) decision
-        self.adv_layer = nn.Sequential(
-            nn.Linear(256, 1),
-            nn.Sigmoid()
-        )
+        # Output for adversarial (real/fake) decision - raw score for Wasserstein distance.
+        self.adv_layer = nn.Linear(256, 1)
         # Auxiliary output for genre prediction
         self.aux_layer = nn.Linear(256, num_genres)
         # Auxiliary output for BPM regression – predicting a continuous value.
         self.bpm_layer = nn.Linear(256, 1)
-        # Note: CrossEntropyLoss expects raw logits so we don’t apply an activation for genre classification.
-        # For BPM, we are using MSELoss (or any regression loss), so no activation is applied here.
+        # Note: For genre classification (and BPM) no activation is used since we apply the proper loss functions.
 
     def forward(self, x):
         # x is expected to be (batch, input_dim) where input_dim = 10*196 (flattened)
         shared_out = self.shared(x)
-        validity = self.adv_layer(shared_out)
+        validity = self.adv_layer(shared_out)  # raw output for Wasserstein loss
         genre_logits = self.aux_layer(shared_out)
         bpm_pred = self.bpm_layer(shared_out)
         return validity, genre_logits, bpm_pred

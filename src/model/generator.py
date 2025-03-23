@@ -2,11 +2,11 @@ import torch
 import torch.nn as nn
 
 class Generator(nn.Module):
-    def __init__(self, input_dim=24, output_dim=1960, img_shape=(10,196)):
+    def __init__(self, input_dim=24, output_dim=1920, img_shape=(10,192)):
         """
         input_dim: noise_dim + genre_dim + bpm_dim (e.g. 5 + 18 + 1 = 24)
-        output_dim: flattened output size (e.g. 10*196 = 1960)
-        img_shape: shape to reshape the output (10,196)
+        output_dim: flattened output size (e.g. 10*192 = 1920)
+        img_shape: shape to reshape the output (10,192)
         """
         super(Generator, self).__init__()
         self.img_shape = img_shape
