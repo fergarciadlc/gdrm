@@ -1,7 +1,5 @@
 # Python=3.10
 numpy<2.0.0
-# music21
-# muspy
 mido
 torch
 tqdm

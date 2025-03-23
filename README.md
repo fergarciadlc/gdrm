@@ -1,6 +1,12 @@
 # gdrm
 
+
+
 gdrum, short for GAN drum, is a bar-level drum sequencer. Given a parameters like BPM and genre, the system will create a bar in 4-4 that matches your needs. You can increase or decrease variability per bar, force a dramatic change, and even explore mixing genres.
+
+## DEMO video
+
+[![Watch the video](https://img.youtube.com/vi/SnJgByFKxcg/maxresdefault.jpg)](https://youtu.be/T-D1KVIuvjA)
 
 ## Installing:
 To install the system, clone the repository, and create your python environment in python=3.10. Once in your environment, install project dependencies with `pip install -r requirements.txt`.
@@ -57,7 +63,7 @@ We are not necessarily convinced by our choice of hyper-parameters. We do think 
 ### Tensorboard
 Here you can find the losses that the GAN was subject to. You can see that it could have trained for much longer.
 
-![Tensorboard](assets/tensorbboard.png)
+![Tensorboard](assets/tensorboard.png)
 
 ## Acknowledgements:
 This project was initially created in the context of the Creative Music Computation course, offered as part of the Master's programme in Sound and Music Computing at the Universitat Pompeu Fabra. This project was created by Andreas Papaeracleous and Fernando Garcia de la Cruz.
