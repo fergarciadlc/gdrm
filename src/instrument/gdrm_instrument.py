@@ -72,7 +72,7 @@ def play_bar_realtime(
         onset_tick = int(round(grid[col] * tpb))
         for row in range(TOTAL_NUM_FAMILIES):
             cell_value = bar_array[row, col]
-            
+
             velocity = int(max(cell_value * 127, 0))
             if velocity > 0:
                 midi_note = family_to_midi.get(row + 1)

@@ -1,13 +1,12 @@
-import time
 import threading
-import numpy as np
-from queue import Queue
+import time
 from contextlib import asynccontextmanager
+from queue import Queue
 
 import mido
-from mido import Message, open_output
-
+import numpy as np
 from fastapi import FastAPI
+from mido import Message, open_output
 from pydantic import BaseModel, Field
 
 ##################################
@@ -17,11 +16,13 @@ from pydantic import BaseModel, Field
 # For demonstration, we simulate generating a single .npy file "generated_output.npy".
 # Make sure you have that file in the same directory or adjust `generate_fake_bar`.
 
+
 class GenerationParams(BaseModel):
     bpm: float = Field(60.0, gt=0, description="Beats per minute")
     class1: float = Field(0.5, description="GAN parameter/class dimension 1")
     class2: float = Field(0.5, description="GAN parameter/class dimension 2")
     class3: float = Field(0.5, description="GAN parameter/class dimension 3")
+
 
 CURRENT_PARAMS = GenerationParams()
 bar_queue = Queue()
@@ -31,14 +32,12 @@ RUN_PLAYER = True
 
 TOTAL_NUM_FAMILIES = 10
 TOTAL_TIME_LOCATIONS = 192
-family_to_midi = {
-    1: 36, 2: 38, 3: 48, 4: 45, 5: 43,
-    6: 46, 7: 42, 8: 49, 9: 57, 10: 51
-}
+family_to_midi = {1: 36, 2: 38, 3: 48, 4: 45, 5: 43, 6: 46, 7: 42, 8: 49, 9: 57, 10: 51}
 
 ##################################
 # Helper Functions
 ##################################
+
 
 def get_division_grid() -> list:
     sixteenth_divs = np.linspace(0, 4, 128, endpoint=False)
@@ -47,19 +46,22 @@ def get_division_grid() -> list:
     grid.append(4.0)
     return grid
 
+
 def ticks_to_seconds(ticks, bpm=120.0, tpb=480):
     return ticks * (60.0 / (bpm * tpb))
+
 
 ##################################
 # Real-time MIDI Player
 ##################################
+
 
 def play_bar_realtime(
     bar_array: np.ndarray,
     outport: mido.ports.BaseOutput,
     bpm: float,
     tpb: int = 480,
-    note_length_ticks: int = 30
+    note_length_ticks: int = 30,
 ):
     grid = get_division_grid()
     events = []
@@ -69,14 +71,18 @@ def play_bar_realtime(
             cell_value = bar_array[row, col]
             if cell_value > -1:
                 velocity = int(cell_value + 1)
-                midi_note = family_to_midi.get(row+1)
+                midi_note = family_to_midi.get(row + 1)
                 if midi_note is None:
                     continue
                 # Note-on
-                events.append((onset_tick, Message('note_on', note=midi_note, velocity=velocity)))
+                events.append(
+                    (onset_tick, Message("note_on", note=midi_note, velocity=velocity))
+                )
                 # Note-off
                 off_tick = onset_tick + note_length_ticks
-                events.append((off_tick, Message('note_off', note=midi_note, velocity=0)))
+                events.append(
+                    (off_tick, Message("note_off", note=midi_note, velocity=0))
+                )
 
     events.sort(key=lambda x: x[0])
 
@@ -90,6 +96,7 @@ def play_bar_realtime(
                 break
             time.sleep(0.0005)
         outport.send(msg)
+
 
 def bar_player_loop():
     """
@@ -108,9 +115,11 @@ def bar_player_loop():
     except Exception as e:
         print(f"[Player] Error in bar_player_loop: {e}")
 
+
 ##################################
 # Bar Generator
 ##################################
+
 
 def generate_bar(params: GenerationParams) -> np.ndarray:
     """
@@ -119,10 +128,12 @@ def generate_bar(params: GenerationParams) -> np.ndarray:
     """
     return generate_fake_bar()
 
+
 def generate_fake_bar(npy_file="generated_output.npy") -> np.ndarray:
     with open(npy_file, "rb") as f:
         bar_array = np.load(f)
     return bar_array
+
 
 def generator_loop():
     """
@@ -140,12 +151,14 @@ def generator_loop():
         time.sleep(half_bar_duration)
     print("[Generator] Exiting generator_loop...")
 
+
 ##################################
 # Lifespan Manager
 ##################################
 
 generator_thread = None
 player_thread = None
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -185,6 +198,7 @@ async def lifespan(app: FastAPI):
 
     print("[FastAPI] Threads have been stopped.")
 
+
 ##################################
 # Create the app
 ##################################
@@ -194,6 +208,7 @@ app = FastAPI(lifespan=lifespan)
 ##################################
 # Routes
 ##################################
+
 
 @app.post("/set_parameters")
 def set_parameters(params: GenerationParams):
@@ -211,12 +226,10 @@ def set_parameters(params: GenerationParams):
     CURRENT_PARAMS = params
     return {"status": "updated", "params": CURRENT_PARAMS.model_dump()}
 
+
 @app.get("/status")
 def status():
     """
     Returns current BPM and queue size.
     """
-    return {
-        "bpm": CURRENT_PARAMS.bpm,
-        "queue_size": bar_queue.qsize()
-    }
+    return {"bpm": CURRENT_PARAMS.bpm, "queue_size": bar_queue.qsize()}
