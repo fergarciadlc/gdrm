@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 
 class Generator(nn.Module):
-    def __init__(self, input_dim=23, output_dim=1960, img_shape=(10,196)):
+    def __init__(self, input_dim=24, output_dim=1960, img_shape=(10,196)):
         """
-        input_dim: noise_dim + genre_dim (e.g. 5 + 18 = 23)
+        input_dim: noise_dim + genre_dim + bpm_dim (e.g. 5 + 18 + 1 = 24)
         output_dim: flattened output size (e.g. 10*196 = 1960)
         img_shape: shape to reshape the output (10,196)
         """
@@ -19,10 +19,11 @@ class Generator(nn.Module):
             nn.Tanh()  # Ensures outputs between -1 and 1
         )
 
-    def forward(self, noise, genre):
+    def forward(self, noise, genre, bpm):
         # noise: (batch, noise_dim)
         # genre: (batch, genre_dim) -- one-hot vector
-        x = torch.cat((noise, genre), dim=1)  # (batch, noise_dim + genre_dim)
+        # bpm: (batch, 1) - continuous value (make sure it is properly normalized)
+        x = torch.cat((noise, genre, bpm), dim=1)  # (batch, noise_dim + genre_dim + 1)
         out = self.model(x)  # (batch, output_dim)
         # Reshape output to proper 2D shape per sample.
         output = out.view(out.size(0), *self.img_shape)

@@ -75,7 +75,9 @@ class GrooveDataset(Dataset):
             genre_idx = self.genre_mapping.get(genre_str, 0)
             # Ensure the genre index is converted to a tensor with the correct type for one_hot encoding.
             metadata["genre"] = f.one_hot(torch.tensor(genre_idx, dtype=torch.long), num_classes=len(self.genre_mapping))
-            metadata["bpm"] = parts[2]
+            bpm_int = int(parts[2])
+            normalised_bpm = 2 * ((bpm_int - 60) / (200 - 60)) - 1
+            metadata["bpm"] = torch.tensor(normalised_bpm)
             metadata["type"] = parts[3]
             time_sig = parts[4]
             if '-' in time_sig:
@@ -95,10 +97,13 @@ def main():
     # Iterate over the DataLoader in your training loop
     for batch in dataloader:
         inputs = batch["data"]           # shape: (batch_size, num_families, num_time_locations)
-        metadata = batch["metadata"]     # metadata list for each sample in the batch
+        genre_data = batch["metadata"]["genre"]         # shape: (batch, 18) one-hot
+        bpm_data = batch["metadata"]["bpm"].unsqueeze(dim=1)             # shape: (batch, 1); ensure it is normalized
+
         # now perform forward, calculate loss, etc.
         print("Processing batch with input shape:", inputs.shape)
-        print("metadata is:", metadata)
+        print("genre_data shape: ", genre_data.shape)
+        print("bpm_data shape: ", bpm_data.shape)
 
 # In your training script or main
 if __name__ == '__main__':
