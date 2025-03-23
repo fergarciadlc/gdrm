@@ -79,9 +79,9 @@ def create_midi_from_array(
         onset_tick = int(round(grid[col] * ticks_per_beat))
         for row in range(TOTAL_NUM_FAMILIES):
             cell_value = bar_array[row, col]
-            if cell_value > -1:  # cell contains a note event
+            velocity = int(max(cell_value * 127, 0))
+            if velocity > 10:  # cell contains a note event
                 # Recover velocity (the original note velocity was added to -1)
-                velocity = int(cell_value + 1)
                 midi_note = family_to_midi.get(
                     row + 1
                 )  # convert 0-indexed row to family number

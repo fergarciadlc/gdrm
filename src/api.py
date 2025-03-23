@@ -9,6 +9,16 @@ from fastapi import FastAPI
 from mido import Message, open_output
 from pydantic import BaseModel, Field
 
+from instrument.inference_generator import run_inference
+from model.generator import Generator
+
+GENERATOR = Generator(
+    input_dim=24,
+    output_dim=1920,
+    img_shape=(10, 192),
+)
+
+
 ##################################
 # Global State & Setup
 ##################################
@@ -17,23 +27,27 @@ from pydantic import BaseModel, Field
 # Make sure you have that file in the same directory or adjust `generate_fake_bar`.
 
 
+bar_queue = Queue()
+MIDI_OUTPUT_PORT = "IAC Driver Bus 1"
+RUN_GENERATOR = True
+RUN_PLAYER = True
+CHECKPOINT_PATH = "../checkpoints/generator_epoch_164.pth"
+GENRE_MAPPING_PATH = "../bar_arrays/genre_mapping.json"
+
+TOTAL_NUM_FAMILIES = 10
+TOTAL_TIME_LOCATIONS = 192
+family_to_midi = {1: 36, 2: 38, 3: 48, 4: 45, 5: 43, 6: 46, 7: 42, 8: 49, 9: 57, 10: 51}
+
+
 class GenerationParams(BaseModel):
     bpm: float = Field(60.0, gt=0, description="Beats per minute")
+    genre: str = Field("funk", description="Genre string")
     class1: float = Field(0.5, description="GAN parameter/class dimension 1")
     class2: float = Field(0.5, description="GAN parameter/class dimension 2")
     class3: float = Field(0.5, description="GAN parameter/class dimension 3")
 
 
 CURRENT_PARAMS = GenerationParams()
-bar_queue = Queue()
-MIDI_OUTPUT_PORT = "IAC Driver Bus 1"
-RUN_GENERATOR = True
-RUN_PLAYER = True
-
-TOTAL_NUM_FAMILIES = 10
-TOTAL_TIME_LOCATIONS = 192
-family_to_midi = {1: 36, 2: 38, 3: 48, 4: 45, 5: 43, 6: 46, 7: 42, 8: 49, 9: 57, 10: 51}
-
 ##################################
 # Helper Functions
 ##################################
@@ -126,7 +140,14 @@ def generate_bar(params: GenerationParams) -> np.ndarray:
     Replace this with your actual GAN generation code.
     Currently we load from "generated_output.npy" for demonstration.
     """
-    return generate_fake_bar()
+    return run_inference(
+        checkpoint_path=CHECKPOINT_PATH,
+        generator=GENERATOR,
+        genre_mapping_path=GENRE_MAPPING_PATH,
+        genre_str=params.genre,
+        bpm=params.bpm,
+        device="cpu",
+    )
 
 
 def generate_fake_bar(npy_file="generated_output.npy") -> np.ndarray:

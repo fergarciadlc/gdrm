@@ -1,10 +1,14 @@
+import json
 import os
 
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from src.model.generator import Generator
+from model.generator import Generator
+
+NOISE_DIM = 5
 
 
 # Function to load generator checkpoint
@@ -20,19 +24,23 @@ def realify_genered_pattern(fake_pattern: torch.Tensor):
     )
 
 
-# Example inference
-if __name__ == "__main__":
-    device = "mps"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    generator = Generator(
-        input_dim=24,
-        output_dim=1920,
-        img_shape=(10, 192),
-    )
-    checkpoint_path = (
-        "checkpoints/generator_epoch_100.pth"  # Update with your checkpoint path
-    )
-    genre_idx = 3
-    bpm = 80.0
+def load_genre_classes(genre_classes_path):
+    """loads classes from json file"""
+    with open(genre_classes_path, "r") as f:
+        genre_classes = json.load(f)
+    return genre_classes
+
+
+def run_inference(
+    checkpoint_path: str,
+    generator: nn.Module,
+    genre_str: str = "funk",
+    genre_mapping_path: str = "bar_arrays/genre_mapping.json",
+    bpm: float = 120.0,
+    device: str = "cpu",
+):
+    genre_mapping = load_genre_classes(genre_mapping_path)
+    genre_idx = genre_mapping[genre_str]
     normalised_bpm = 2 * ((bpm - 60) / (200 - 60)) - 1
 
     # Load the trained generator
@@ -41,23 +49,26 @@ if __name__ == "__main__":
     ).to(device)
 
     # Define your input dimensions
-    noise_dim = 5
-    genre_dim = 18
+    noise_dim = NOISE_DIM
 
     # Example inputs
     batch_size = 1
     noise = torch.randn(batch_size, noise_dim).to(device)
-    genre = torch.zeros(batch_size, genre_dim).to(device)
-    genre[:, genre_idx] = 1  # Example genre, first genre selected (one-hot)
+    genre = (
+        F.one_hot(
+            torch.tensor(genre_idx, dtype=torch.long),
+            num_classes=len(genre_mapping),
+        )
+        .unsqueeze(0)
+        .to(device)
+    )
     bpm = torch.tensor([[normalised_bpm]]).to(device)  # Example normalized bpm
 
     # Generate sample
     with torch.no_grad():
-        generated_output = realify_genered_pattern(generator(noise, genre, bpm))
+        generated_output = generator(noise, genre, bpm)
 
     generated_output = generated_output[0].cpu().numpy()
 
-    print("Generated output shape:", generated_output.shape)
-    print("Generated output:", generated_output)
-    # save the generated output as a .npy file
-    np.save("generated_output.npy", generated_output)
+    return generated_output
+

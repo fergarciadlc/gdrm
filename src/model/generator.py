@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.nn.utils import spectral_norm
 
+
 class Generator(nn.Module):
     def __init__(self, input_dim=24, output_dim=1920, img_shape=(10, 192)):
         """
@@ -17,7 +18,7 @@ class Generator(nn.Module):
             spectral_norm(nn.Linear(128, 256)),
             nn.ReLU(inplace=True),
             spectral_norm(nn.Linear(256, output_dim)),
-            nn.Tanh()  # Ensures outputs between -1 and 1.
+            nn.Tanh(),  # Ensures outputs between -1 and 1.
         )
 
     def realify_genered_pattern(self, fake_pattern: torch.Tensor):
