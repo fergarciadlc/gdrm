@@ -98,8 +98,6 @@ def compute_gradient_penalty(discriminator, real_samples, fake_samples, device):
     gradient_penalty = ((gradients_norm - 1) ** 2).mean()
     return gradient_penalty
 
-def realify_genered_pattern(fake_pattern: torch.Tensor):
-    return torch.where(fake_pattern <= 0, torch.tensor(-1.0, device=fake_pattern.device), fake_pattern)
 
 # ------------------------------------------------------------------------------
 # Training Loop
@@ -155,8 +153,7 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
                 # Generate fake samples with fresh noise for each critic update.
                 noise = torch.randn(current_batch, NOISE_DIM, device=device)
                 # Concatenate noise with the conditioning data.
-                fake_pattern = generator(noise, genre_data, bpm_data)   # shape: (batch,10,192)
-                fake_data = realify_genered_pattern(fake_pattern)
+                fake_data = generator(noise, genre_data, bpm_data)   # shape: (batch,10,192)
                 fake_data_flat = fake_data.view(current_batch, -1)
                 # Forward pass on fake samples.
                 fake_validity, fake_genre_pred, fake_bpm_pred = discriminator(fake_data_flat.detach())
@@ -195,8 +192,7 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
             optimizer_G.zero_grad()
             # Sample a new noise vector; note this is distinct from the one used in the last D update.
             noise_gen = torch.randn(current_batch, NOISE_DIM, device=device)
-            gen_pattern = generator(noise_gen, genre_data, bpm_data)
-            gen_data = realify_genered_pattern(gen_pattern)
+            gen_data = generator(noise_gen, genre_data, bpm_data)
             gen_data_flat = gen_data.view(current_batch, -1)
             validity, genre_pred, bpm_pred = discriminator(gen_data_flat)
 

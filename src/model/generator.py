@@ -19,6 +19,11 @@ class Generator(nn.Module):
             nn.Tanh()  # Ensures outputs between -1 and 1
         )
 
+    def realify_genered_pattern(self, fake_pattern: torch.Tensor):
+        neg_one = torch.tensor(-1.0, device=fake_pattern.device)
+        return torch.where(fake_pattern <= 0, neg_one, fake_pattern)
+
+
     def forward(self, noise, genre, bpm):
         # noise: (batch, noise_dim)
         # genre: (batch, genre_dim) -- one-hot vector
@@ -27,4 +32,5 @@ class Generator(nn.Module):
         out = self.model(x)  # (batch, output_dim)
         # Reshape output to proper 2D shape per sample.
         output = out.view(out.size(0), *self.img_shape)
-        return output
+        pattern = self.realify_genered_pattern(output)
+        return pattern
