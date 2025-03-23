@@ -263,19 +263,5 @@ if __name__ == "__main__":
     dataset = GrooveDataset(root_dir=dataset_directory)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
-    logger.info("Starting up tensorboard")
-    try:
-        subprocess.Popen(["tensorboard", "--logdir=./runs/gdrm_experiment"])
-        if sys.platform == "win32":
-            subprocess.Popen(["start", "http://localhost:6006/"], shell=True)
-        elif sys.platform == "linux":
-            subprocess.Popen(["xdg-open", "http://localhost:6006/"])
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", "http://localhost:6006/"])
-        else:
-            logger.info("Unsupported operating system")
-
-    except Exception as e:
-        print(f"{e}: \nCouldn't start tensorboard ")
     logger.info("Begin training")
     train(generator, discriminator, dataloader)
