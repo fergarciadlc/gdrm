@@ -72,8 +72,9 @@ def play_bar_realtime(
         onset_tick = int(round(grid[col] * tpb))
         for row in range(TOTAL_NUM_FAMILIES):
             cell_value = bar_array[row, col]
-            if cell_value > -1:
-                velocity = int(cell_value + 1)
+            
+            velocity = int(max(cell_value * 127, 0))
+            if velocity > 0:
                 midi_note = family_to_midi.get(row + 1)
                 if midi_note is None:
                     continue
@@ -179,7 +180,7 @@ def main():
     # Start the bar_player_loop in a thread
     player_thread = threading.Thread(
         target=bar_player_loop,
-        args=(bar_queue, "IAC Driver Bus 1", 120.0, 480),
+        args=(bar_queue, "IAC Driver Bus 1", 50.0, 480),
         daemon=True,
     )
     player_thread.start()
