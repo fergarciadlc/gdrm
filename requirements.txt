@@ -6,3 +6,4 @@ mido
 torch
 tqdm
 tensorboard
+"fastapi[standard]"
