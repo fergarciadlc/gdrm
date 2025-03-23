@@ -14,6 +14,9 @@ from torch.utils.data import DataLoader
 from torch import autograd
 from tqdm import tqdm
 
+import logging
+from torch.utils.tensorboard.writer import SummaryWriter
+
 from model.discriminator import Discriminator
 from model.generator import Generator
 from dataloader import GrooveDataset
@@ -54,6 +57,13 @@ N_CRITIC = 5
 # Loss functions for auxiliary tasks:
 classification_loss_fn = nn.CrossEntropyLoss()
 bpm_loss_fn = nn.MSELoss()
+
+# ------------------------------------------------------------------------------
+# Logging Configuration
+# ------------------------------------------------------------------------------
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------------------------
 # Helper Functions
@@ -97,8 +107,10 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
     optimizer_G = optim.Adam(generator.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
     optimizer_D = optim.Adam(discriminator.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
 
+    # Initialize TensorBoard SummaryWriter.
+    writer = SummaryWriter(log_dir='./runs/gdrm_experiment')
+
     for epoch in range(NUM_EPOCHS):
-        # Iterate over the dataloader.
         for i, batch in enumerate(tqdm(dataloader)):
             real_data = batch["data"].to(device)                     # shape: (batch, 10, 192)
             genre_data = batch["metadata"]["genre"].to(device)         # shape: (batch, 18) one-hot encoding
@@ -182,8 +194,15 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
 
             if i % 50 == 0:
                 avg_d_loss = d_loss_total / N_CRITIC
-                print(f"[Epoch {epoch+1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
-                      f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]")
+                iteration = epoch * len(dataloader) + i
+                logger.info(f"[Epoch {epoch+1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
+                            f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]")
+
+                # Log metrics to TensorBoard.
+                writer.add_scalar('Loss/Discriminator', avg_d_loss, iteration)
+                writer.add_scalar('Loss/Generator', g_loss.item(), iteration)
+
+    writer.close()
 
 # ------------------------------------------------------------------------------
 # Main Execution Block
@@ -195,10 +214,10 @@ if __name__ == "__main__":
     discriminator = Discriminator(input_dim=IMG_DIM, num_genres=GENRE_DIM)
 
     dataset_directory = "bar_arrays"
-    print("Loading dataset")
+    logger.info("Loading dataset")
     # Ensure that GrooveDataset returns a dictionary with "data" and "metadata" that also includes "bpm".
     dataset = GrooveDataset(root_dir=dataset_directory)
     dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
 
-    print("Begin training")
+    logger.info("Begin training")
     train(generator, discriminator, dataloader)
