@@ -48,6 +48,9 @@ LAMBDA_BPM_D   = 1.0   # Weight for the BPM regression loss.
 LAMBDA_CLASS_G = 1.0   # Weight for the generator's genre classification loss.
 LAMBDA_BPM_G   = 1.0   # Weight for the generator's BPM regression loss.
 
+# Introduce number of critic updates per generator update.
+N_CRITIC = 5
+
 # Loss functions for auxiliary tasks:
 classification_loss_fn = nn.CrossEntropyLoss()
 bpm_loss_fn = nn.MSELoss()
@@ -95,6 +98,7 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
     optimizer_D = optim.Adam(discriminator.parameters(), lr=LEARNING_RATE, betas=(0.5, 0.999))
 
     for epoch in range(NUM_EPOCHS):
+        # Iterate over the dataloader.
         for i, batch in enumerate(tqdm(dataloader)):
             real_data = batch["data"].to(device)                     # shape: (batch, 10, 192)
             genre_data = batch["metadata"]["genre"].to(device)         # shape: (batch, 18) one-hot encoding
@@ -104,56 +108,62 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
             # Convert one-hot genre into label indices for CrossEntropyLoss.
             real_genre_labels = genre_data.argmax(dim=1)
 
-            # ---------------------
-            #  Train Discriminator
-            # ---------------------
-            optimizer_D.zero_grad()
+            # ------------------------------------------------------------------
+            # Multiple Discriminator (Critic) Updates
+            # ------------------------------------------------------------------
+            d_loss_total = 0.0
+            for _ in range(N_CRITIC):
+                optimizer_D.zero_grad()
 
-            # Flatten real data: (batch, 10,192) → (batch,1920)
-            real_data_flat = real_data.view(current_batch, -1)
-            # Forward pass on real samples.
-            real_validity, real_genre_pred, real_bpm_pred = discriminator(real_data_flat)
-            # Adversarial loss for real samples: aim for high values.
-            d_real_loss = - real_validity.mean()
-            # Auxiliary losses for real samples.
-            real_class_loss = classification_loss_fn(real_genre_pred, real_genre_labels)
-            real_bpm_loss = bpm_loss_fn(real_bpm_pred, bpm_data)
+                # Flatten real data: (batch, 10,192) → (batch,1920)
+                real_data_flat = real_data.view(current_batch, -1)
+                # Forward pass on real samples.
+                real_validity, real_genre_pred, real_bpm_pred = discriminator(real_data_flat)
+                # Adversarial loss for real samples: aim for high values.
+                d_real_loss = - real_validity.mean()
+                # Auxiliary losses for real samples.
+                real_class_loss = classification_loss_fn(real_genre_pred, real_genre_labels)
+                real_bpm_loss = bpm_loss_fn(real_bpm_pred, bpm_data)
 
-            # Generate fake samples.
-            noise = torch.randn(current_batch, NOISE_DIM, device=device)
-            fake_pattern = generator(noise, genre_data, bpm_data)   # shape: (batch,10,192)
-            fake_data = realify_genered_pattern(fake_pattern)
-            fake_data_flat = fake_data.view(current_batch, -1)
-            # Forward pass on fake samples.
-            fake_validity, fake_genre_pred, fake_bpm_pred = discriminator(fake_data_flat.detach())
-            # Adversarial loss for fake samples: aim for low values.
-            d_fake_loss = fake_validity.mean()
-            # Auxiliary losses for fake samples.
-            fake_class_loss = classification_loss_fn(fake_genre_pred, real_genre_labels)
-            fake_bpm_loss = bpm_loss_fn(fake_bpm_pred, bpm_data)
+                # Generate fake samples with fresh noise for each critic update.
+                noise = torch.randn(current_batch, NOISE_DIM, device=device)
+                # Concatenate noise with the conditioning data.
+                fake_pattern = generator(noise, genre_data, bpm_data)   # shape: (batch,10,192)
+                fake_data = realify_genered_pattern(fake_pattern)
+                fake_data_flat = fake_data.view(current_batch, -1)
+                # Forward pass on fake samples.
+                fake_validity, fake_genre_pred, fake_bpm_pred = discriminator(fake_data_flat.detach())
+                # Adversarial loss for fake samples: aim for low values.
+                d_fake_loss = fake_validity.mean()
+                # Auxiliary losses for fake samples.
+                fake_class_loss = classification_loss_fn(fake_genre_pred, real_genre_labels)
+                fake_bpm_loss = bpm_loss_fn(fake_bpm_pred, bpm_data)
 
-            # Calculate gradient penalty.
-            gradient_penalty = compute_gradient_penalty(discriminator, real_data_flat.data, fake_data_flat.data, device)
+                # Calculate gradient penalty.
+                gradient_penalty = compute_gradient_penalty(discriminator, real_data_flat.data, fake_data_flat.data, device)
 
-            # Total adversarial loss for discriminator.
-            d_adv_loss = d_fake_loss + d_real_loss
+                # Total adversarial loss for discriminator.
+                d_adv_loss = d_fake_loss + d_real_loss
 
-            # Auxiliary loss: now explicitly weighted.
-            aux_loss = (LAMBDA_CLASS_D * (real_class_loss + fake_class_loss) +
-                        LAMBDA_BPM_D   * (real_bpm_loss  + fake_bpm_loss))
+                # Compute weighted auxiliary losses.
+                aux_loss = (LAMBDA_CLASS_D * (real_class_loss + fake_class_loss) +
+                            LAMBDA_BPM_D   * (real_bpm_loss  + fake_bpm_loss))
 
-            # Total discriminator loss.
-            d_loss = d_adv_loss + LAMBDA_GP * gradient_penalty + aux_loss
+                # Total discriminator loss.
+                d_loss = d_adv_loss + LAMBDA_GP * gradient_penalty + aux_loss
 
-            d_loss.backward()
-            optimizer_D.step()
+                d_loss.backward()
+                optimizer_D.step()
 
-            # -----------------
-            #  Train Generator
-            # -----------------
+                d_loss_total += d_loss.item()
+
+            # ------------------------------------------------------------------
+            # Generator Update (use fresh noise and conditioning)
+            # ------------------------------------------------------------------
             optimizer_G.zero_grad()
-            # Generate fake samples with the same conditioning (reuse noise, genre and bpm).
-            gen_pattern = generator(noise, genre_data, bpm_data)
+            # Sample a new noise vector; note this is distinct from the one used in the last D update.
+            noise_gen = torch.randn(current_batch, NOISE_DIM, device=device)
+            gen_pattern = generator(noise_gen, genre_data, bpm_data)
             gen_data = realify_genered_pattern(gen_pattern)
             gen_data_flat = gen_data.view(current_batch, -1)
             validity, genre_pred, bpm_pred = discriminator(gen_data_flat)
@@ -171,8 +181,9 @@ def train(generator: Generator, discriminator: Discriminator, dataloader):
             optimizer_G.step()
 
             if i % 50 == 0:
+                avg_d_loss = d_loss_total / N_CRITIC
                 print(f"[Epoch {epoch+1}/{NUM_EPOCHS}] [Batch {i}/{len(dataloader)}] "
-                      f"[D loss: {d_loss.item():.4f}] [G loss: {g_loss.item():.4f}]")
+                      f"[D loss: {avg_d_loss:.4f}] [G loss: {g_loss.item():.4f}]")
 
 # ------------------------------------------------------------------------------
 # Main Execution Block
