@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-
+from torch.nn.utils import spectral_norm
 
 class Discriminator(nn.Module):
     def __init__(self, input_dim=1960, num_genres=18):
@@ -9,20 +9,20 @@ class Discriminator(nn.Module):
         num_genres: number of genres for the auxiliary classification task.
         """
         super(Discriminator, self).__init__()
-        # Shared layers
+        # Shared layers with Spectral Normalization on each Linear layer.
         self.shared = nn.Sequential(
-            nn.Linear(input_dim, 512),
+            spectral_norm(nn.Linear(input_dim, 512)),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2, inplace=True),
+            spectral_norm(nn.Linear(512, 256)),
+            nn.LeakyReLU(0.2, inplace=True)
         )
-        # Output for adversarial (real/fake) decision - raw score for Wasserstein distance.
-        self.adv_layer = nn.Linear(256, 1)
-        # Auxiliary output for genre prediction
-        self.aux_layer = nn.Linear(256, num_genres)
+        # Output for adversarial (real/fake) decision - raw score for Wasserstein loss.
+        self.adv_layer = spectral_norm(nn.Linear(256, 1))
+        # Auxiliary output for genre prediction.
+        self.aux_layer = spectral_norm(nn.Linear(256, num_genres))
         # Auxiliary output for BPM regression – predicting a continuous value.
-        self.bpm_layer = nn.Linear(256, 1)
-        # Note: For genre classification (and BPM) no activation is used since we apply the proper loss functions.
+        self.bpm_layer = spectral_norm(nn.Linear(256, 1))
+        # Note: No activation is applied for genre classification or BPM regression since the loss functions handle that.
 
     def forward(self, x):
         # x is expected to be (batch, input_dim) where input_dim = 10*196 (flattened)
