@@ -54,5 +54,10 @@ To this end, the generator and the discriminator compete when it comes to data p
 
 We are not necessarily convinced by our choice of hyper-parameters. We do think that there are more optimal settings for the weights of the losses. However, due to lack of time, we were unable to fully test our network.
 
+### Tensorboard
+Here you can find the losses that the GAN was subject to. You can see that it could have trained for much longer.
+
+![Tensorboard](assets/tensorbboard.png)
+
 ## Acknowledgements:
 This project was initially created in the context of the Creative Music Computation course, offered as part of the Master's programme in Sound and Music Computing at the Universitat Pompeu Fabra. This project was created by Andreas Papaeracleous and Fernando Garcia de la Cruz.
