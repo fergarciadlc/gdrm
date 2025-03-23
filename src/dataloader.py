@@ -2,7 +2,7 @@ import os
 import json
 import numpy as np
 import torch
-import torch.nn.functional as f
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
 class GrooveDataset(Dataset):
@@ -19,8 +19,8 @@ class GrooveDataset(Dataset):
         # Load the genre mapping from genre_mapping.json
         mapping_path = os.path.join(root_dir, "genre_mapping.json")
         if os.path.exists(mapping_path):
-            with open(mapping_path, "r") as f:
-                self.genre_mapping = json.load(f)
+            with open(mapping_path, "r") as fp:
+                self.genre_mapping = json.load(fp)
         else:
             self.genre_mapping = {}  # fallback empty mapping if file not found
 
@@ -74,7 +74,7 @@ class GrooveDataset(Dataset):
             # Fetch the genre index from the mapping (defaulting to 0 if not found).
             genre_idx = self.genre_mapping.get(genre_str, 0)
             # Ensure the genre index is converted to a tensor with the correct type for one_hot encoding.
-            metadata["genre"] = f.one_hot(torch.tensor(genre_idx, dtype=torch.long), num_classes=len(self.genre_mapping))
+            metadata["genre"] = F.one_hot(torch.tensor(genre_idx, dtype=torch.long), num_classes=len(self.genre_mapping))
             bpm_int = int(parts[2])
             normalised_bpm = 2 * ((bpm_int - 60) / (200 - 60)) - 1
             metadata["bpm"] = torch.tensor(normalised_bpm)
