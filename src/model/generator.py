@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn.utils import spectral_norm
 
 class Generator(nn.Module):
     def __init__(self, input_dim=24, output_dim=1920, img_shape=(10,192)):
@@ -11,23 +12,22 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.img_shape = img_shape
         self.model = nn.Sequential(
-            nn.Linear(input_dim, 128),
+            spectral_norm(nn.Linear(input_dim, 128)),
             nn.ReLU(inplace=True),
-            nn.Linear(128, 256),
+            spectral_norm(nn.Linear(128, 256)),
             nn.ReLU(inplace=True),
-            nn.Linear(256, output_dim),
-            nn.Tanh()  # Ensures outputs between -1 and 1
+            spectral_norm(nn.Linear(256, output_dim)),
+            nn.Tanh()  # Ensures outputs between -1 and 1.
         )
 
     def realify_genered_pattern(self, fake_pattern: torch.Tensor):
         neg_one = torch.tensor(-1.0, device=fake_pattern.device)
         return torch.where(fake_pattern <= 0, neg_one, fake_pattern)
 
-
     def forward(self, noise, genre, bpm):
         # noise: (batch, noise_dim)
         # genre: (batch, genre_dim) -- one-hot vector
-        # bpm: (batch, 1) - continuous value (make sure it is properly normalized)
+        # bpm: (batch, 1) - continuous value (make sure it is properly normalized).
         x = torch.cat((noise, genre, bpm), dim=1)  # (batch, noise_dim + genre_dim + 1)
         out = self.model(x)  # (batch, output_dim)
         # Reshape output to proper 2D shape per sample.
