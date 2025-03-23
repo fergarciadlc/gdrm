@@ -126,7 +126,8 @@ def create_midi_from_array(npy_file: str, output_midi: str, ticks_per_beat: int 
 def main():
     # Example: use the numpy file for bar 1 from the "bar_arrays" folder.
     npy_file = os.path.join("bar_arrays/drummer1/session1", "1_funk_80_beat_4-4_bar_4.npy")
-    output_midi = "bar_4_generated.mid"
+    npy_file = "generated_output.npy"
+    output_midi = "generated_output.mid"
     create_midi_from_array(npy_file, output_midi)
 
 if __name__ == "__main__":
