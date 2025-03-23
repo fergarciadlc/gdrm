@@ -40,6 +40,10 @@ tensorboard --logdir=./runs/gdrm_experiment
 
 ## Playing the sequencer:
 
+```
+cd src
+fastapi run app.py
+```
 
 ## The GAN:
 The discriminator is trained as a critic, using the wasserstein distance to evaluate it's understanding of the distance between real and fake drum patterns.

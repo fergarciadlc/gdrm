@@ -31,7 +31,7 @@ bar_queue = Queue()
 MIDI_OUTPUT_PORT = "IAC Driver Bus 1"
 RUN_GENERATOR = True
 RUN_PLAYER = True
-CHECKPOINT_PATH = "../checkpoints/generator_epoch_164.pth"
+CHECKPOINT_PATH = "../checkpoints/generator_epoch_224.pth"
 GENRE_MAPPING_PATH = "../bar_arrays/genre_mapping.json"
 
 TOTAL_NUM_FAMILIES = 10
